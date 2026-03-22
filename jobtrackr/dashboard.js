@@ -1,6 +1,7 @@
 /* ═══════════════════════════════════════
-   dashboard.js — Dashboard Logic V2
-   Stats, Top Skills, Filterable Table, Re-post Grouping, CSV Export
+   dashboard.js — Dashboard Logic V3
+   Stats, Top Skills (filterable), Filterable Table, Re-post Grouping,
+   Inline Status Edit, Bulk Actions, JD Viewer, Column Visibility, CSV Export
    ═══════════════════════════════════════ */
 
 (function () {
@@ -12,6 +13,39 @@
   let editingApp = null;
   let deletingApp = null;
   let expandedRow = null;
+  let selectedIds = new Set();
+
+  /* Column visibility (persisted in localStorage) */
+  const ALL_COLUMNS = [
+    { key: 'check', label: '☑', default: true },
+    { key: 'date', label: 'Date', default: true },
+    { key: 'company', label: 'Company', default: true },
+    { key: 'role', label: 'Role', default: true },
+    { key: 'location', label: 'Location', default: true },
+    { key: 'platform', label: 'Platform', default: true },
+    { key: 'source', label: 'Source', default: true },
+    { key: 'email', label: 'Email', default: true },
+    { key: 'status', label: 'Status', default: true },
+    { key: 'jobtype', label: 'Job Type', default: true },
+    { key: 'workmode', label: 'Work Mode', default: true },
+    { key: 'jobid', label: 'Job ID', default: true },
+    { key: 'ref', label: 'Ref', default: true },
+    { key: 'actions', label: 'Actions', default: true },
+  ];
+  let visibleCols = loadColVisibility();
+
+  function loadColVisibility() {
+    try {
+      const raw = localStorage.getItem('jt_col_vis');
+      if (raw) return JSON.parse(raw);
+    } catch { /* ignore */ }
+    const obj = {};
+    ALL_COLUMNS.forEach(c => { obj[c.key] = c.default; });
+    return obj;
+  }
+  function saveColVisibility() {
+    try { localStorage.setItem('jt_col_vis', JSON.stringify(visibleCols)); } catch { /* ignore */ }
+  }
 
   /* ─── DOM Refs ─── */
   const $ = id => document.getElementById(id);
@@ -23,10 +57,18 @@
 
   const filterSearch = $('filter-search');
   const filterPlatform = $('filter-platform');
+  const filterPlatformCat = $('filter-platform-cat');
+  const filterJobType = $('filter-job-type');
+  const filterWorkMode = $('filter-work-mode');
   const filterEmail = $('filter-email');
   const filterStatus = $('filter-status');
   const filterSource = $('filter-source');
+  const filterReferralOnly = $('filter-referral-only');
+  const filterHasJD = $('filter-has-jd');
   const filterSort = $('filter-sort');
+  const filterCount = $('filter-count');
+  const btnClearFilters = $('btn-clear-filters');
+  const skillsFilter = $('skills-filter');
 
   const statTotal = $('stat-total');
   const statWeek = $('stat-week');
@@ -39,6 +81,8 @@
   const btnExport = $('btn-export');
   const editModal = $('edit-modal');
   const deleteModal = $('delete-modal');
+  const bulkBar = $('bulk-bar');
+  const toast = $('toast');
 
   /* ═══════════════════════════════
      Init
@@ -48,6 +92,8 @@
     settings = await getSettings();
     await loadData();
     wireEvents();
+    renderColPanel();
+    applyColVisibility();
   }
 
   async function loadData() {
@@ -56,6 +102,7 @@
     renderStats(stats);
     renderSkillsCard();
     renderTable();
+    updateFilterCount();
   }
 
   /* ─── Stats ─── */
@@ -68,12 +115,23 @@
     const pct = stats.weeklyGoal > 0 ? Math.min((stats.thisWeek / stats.weeklyGoal) * 100, 100) : 0;
     progressFill.style.width = `${pct}%`;
     progressFill.style.background = pct >= 100 ? 'var(--color-success)' : 'var(--color-primary)';
+
+    // v3 secondary stats
+    $('stat-fulltime').textContent = stats.byJobType?.['Full-time'] || 0;
+    $('stat-intern').textContent = stats.byJobType?.['Internship'] || 0;
+    $('stat-remote').textContent = stats.byWorkMode?.['Remote'] || 0;
+    $('stat-hybrid').textContent = stats.byWorkMode?.['Hybrid'] || 0;
+    $('stat-onsite').textContent = stats.byWorkMode?.['On-site'] || 0;
+    $('stat-top-source').textContent = stats.topSource ? `${stats.topSource.source} (${stats.topSource.count})` : '—';
   }
 
-  /* ─── Top Skills Card ─── */
+  /* ─── Top Skills Card (with filter) ─── */
   function renderSkillsCard() {
+    const filterType = skillsFilter.value;
+    const apps = filterType === 'all' ? allApps : allApps.filter(a => a.jobType === filterType);
+
     const freq = {};
-    allApps.forEach(a => {
+    apps.forEach(a => {
       if (!a.keywords) return;
       const all = [...(a.keywords.mustHave || []), ...(a.keywords.niceToHave || [])];
       all.forEach(s => { freq[s] = (freq[s] || 0) + 1; });
@@ -100,15 +158,20 @@
     }).join('');
   }
 
-  /* ─── Filter & Sort ─── */
+  /* ─── Filter & Sort (v3: expanded) ─── */
   function getFilteredApps() {
     let filtered = [...allApps];
     const q = filterSearch.value.toLowerCase().trim();
     if (q) filtered = filtered.filter(a => (a.company || '').toLowerCase().includes(q) || (a.role || '').toLowerCase().includes(q) || (a.notes || '').toLowerCase().includes(q));
     const plat = filterPlatform.value; if (plat) filtered = filtered.filter(a => a.platform === plat);
+    const platCat = filterPlatformCat.value; if (platCat) filtered = filtered.filter(a => (a.platformCategory || 'Other') === platCat);
+    const jt = filterJobType.value; if (jt) filtered = filtered.filter(a => (a.jobType || 'Unknown') === jt);
+    const wm = filterWorkMode.value; if (wm) filtered = filtered.filter(a => (a.workMode || 'Unknown') === wm);
     const email = filterEmail.value; if (email) filtered = filtered.filter(a => a.email === email);
     const status = filterStatus.value; if (status) filtered = filtered.filter(a => a.status === status);
     const source = filterSource.value; if (source) filtered = filtered.filter(a => a.source === source);
+    if (filterReferralOnly.checked) filtered = filtered.filter(a => a.referral);
+    if (filterHasJD.checked) filtered = filtered.filter(a => a.jobDescription && a.jobDescription.length > 0);
 
     switch (filterSort.value) {
       case 'date-desc': filtered.sort((a, b) => new Date(b.dateApplied) - new Date(a.dateApplied)); break;
@@ -119,30 +182,48 @@
     return filtered;
   }
 
+  function updateFilterCount() {
+    const filters = [filterPlatform, filterPlatformCat, filterJobType, filterWorkMode, filterEmail, filterStatus, filterSource];
+    let count = filters.filter(f => f.value !== '').length;
+    if (filterSearch.value.trim()) count++;
+    if (filterReferralOnly.checked) count++;
+    if (filterHasJD.checked) count++;
+    if (count > 0) {
+      filterCount.textContent = `${count} active`;
+      filterCount.classList.remove('hidden');
+      btnClearFilters.classList.remove('hidden');
+    } else {
+      filterCount.classList.add('hidden');
+      btnClearFilters.classList.add('hidden');
+    }
+  }
+
+  function clearAllFilters() {
+    filterSearch.value = '';
+    [filterPlatform, filterPlatformCat, filterJobType, filterWorkMode, filterEmail, filterStatus, filterSource, filterSort].forEach(f => f.selectedIndex = 0);
+    filterReferralOnly.checked = false;
+    filterHasJD.checked = false;
+    updateFilterCount();
+    renderTable();
+  }
+
   /* ─── Re-post Grouping ─── */
   function buildRepostGroups(apps) {
-    // Build map of id → app for linked lookups
     const idMap = {};
     allApps.forEach(a => { idMap[a.id] = a; });
-
-    // Group apps by normalized company+role
     const groups = {};
     apps.forEach(app => {
       const key = _normCo(app.company) + '||' + _normRole(app.role);
       if (!groups[key]) groups[key] = [];
       groups[key].push(app);
     });
-
-    // Build render order: for groups with >1 entry (re-posts), show most recent on top with linked entries below
     const result = [];
     const shown = new Set();
     apps.forEach(app => {
       if (shown.has(app.id)) return;
       const key = _normCo(app.company) + '||' + _normRole(app.role);
       const group = groups[key];
-
       if (group.length > 1 && !shown.has(group[0].id)) {
-        // Sort group by date desc
         group.sort((a, b) => new Date(b.dateApplied) - new Date(a.dateApplied));
         result.push({ type: 'main', app: group[0], isRepost: true, groupSize: group.length });
         shown.add(group[0].id);
@@ -158,11 +239,13 @@
     return result;
   }
 
-  /* ─── Render Table ─── */
+  /* ─── Render Table (v3: checkbox, job type, work mode, inline status) ─── */
   function renderTable() {
     const filtered = getFilteredApps();
     tableBody.innerHTML = '';
     expandedRow = null;
+    selectedIds.clear();
+    updateBulkBar();
 
     if (filtered.length === 0) {
       tableWrap.classList.add('hidden');
@@ -179,37 +262,43 @@
       const app = item.app;
       const tr = document.createElement('tr');
       tr.setAttribute('data-id', app.id);
-
-      if (item.type === 'linked') {
-        tr.classList.add('linked-row');
-      }
+      if (item.type === 'linked') tr.classList.add('linked-row');
 
       const daysOld = Math.floor((Date.now() - new Date(app.dateApplied).getTime()) / 86400000);
       const isStale = daysOld > 30 && app.status === 'Applied';
       const emailLabel = app.email === 'A' ? (settings.labelA || 'A') : (settings.labelB || 'B');
 
       tr.innerHTML = `
-        <td class="date-cell">
+        <td class="col-check"><input type="checkbox" class="row-check" data-id="${app.id}"></td>
+        <td class="date-cell col-date">
           ${item.type === 'linked' ? '<span class="linked-prefix">└─</span>' : ''}
           <span class="date-relative">${relativeDate(app.dateApplied)}</span>
           <span class="date-exact">${formatDate(app.dateApplied)}</span>
           ${isStale ? '<span class="age-indicator age-stale" title="30+ days, no update"></span>' : ''}
         </td>
-        <td>${esc(app.company || '—')}${item.isRepost ? '<span class="repost-badge">Re-post</span>' : ''}</td>
-        <td>${esc(app.role || '—')}</td>
-        <td>${esc(app.location || '—')}</td>
-        <td><span class="badge badge-platform" data-platform="${escA(app.platform)}">${esc(app.platform)}</span></td>
-        <td><span class="badge badge-source">${esc(app.source || 'Direct')}</span></td>
-        <td><span class="badge badge-email">${esc(emailLabel)}</span></td>
-        <td><span class="badge badge-status" data-status="${escA(app.status)}">${esc(app.status)}</span></td>
-        <td class="jobid-cell">${esc(app.rawJobId || '—')}</td>
-        <td>
+        <td class="col-company">${esc(app.company || '—')}${item.isRepost ? '<span class="repost-badge">Re-post</span>' : ''}</td>
+        <td class="col-role">${esc(app.role || '—')}</td>
+        <td class="col-location">${esc(app.location || '—')}</td>
+        <td class="col-platform"><span class="badge badge-platform" data-platform="${escA(app.platform)}">${esc(app.platform)}</span></td>
+        <td class="col-source"><span class="badge badge-source">${esc(app.source || 'Direct')}</span></td>
+        <td class="col-email"><span class="badge badge-email">${esc(emailLabel)}</span></td>
+        <td class="col-status">
+          <select class="inline-status" data-id="${app.id}" data-current="${escA(app.status)}">
+            ${['Applied','Referral Pending','Re-applied (Referral)','Interviewing','Rejected','Offer','Withdrawn'].map(s =>
+              `<option${s === app.status ? ' selected' : ''}>${s}</option>`
+            ).join('')}
+          </select>
+        </td>
+        <td class="col-jobtype"><span class="badge badge-jobtype" data-jobtype="${escA(app.jobType || 'Unknown')}">${esc(app.jobType || 'Unknown')}</span></td>
+        <td class="col-workmode"><span class="badge badge-workmode" data-workmode="${escA(app.workMode || 'Unknown')}">${esc(app.workMode || 'Unknown')}</span></td>
+        <td class="jobid-cell col-jobid">${esc(app.rawJobId || '—')}</td>
+        <td class="col-ref">
           <span class="referral-icon ${app.referral ? 'referral-yes' : 'referral-no'}"
                 title="${app.referral && app.referralPerson ? escA(app.referralPerson) : ''}">
             ${app.referral ? '✓' : '—'}
           </span>
         </td>
-        <td>
+        <td class="col-actions">
           <div class="action-btns">
             <button class="action-btn" data-action="edit" data-id="${app.id}">Edit</button>
             <button class="action-btn action-btn-danger" data-action="delete" data-id="${app.id}">Delete</button>
@@ -218,15 +307,17 @@
       `;
 
       tr.addEventListener('click', (e) => {
-        if (e.target.closest('.action-btn')) return;
+        if (e.target.closest('.action-btn') || e.target.closest('.inline-status') || e.target.closest('.row-check')) return;
         toggleExpandRow(app, tr);
       });
 
       tableBody.appendChild(tr);
     });
+
+    applyColVisibility();
   }
 
-  /* ─── Expand Row ─── */
+  /* ─── Expand Row (v3: JD viewer) ─── */
   function toggleExpandRow(app, tr) {
     if (expandedRow) {
       expandedRow.remove();
@@ -236,7 +327,6 @@
     expandTr.className = 'expand-row';
     expandTr._appId = app.id;
 
-    // Keyword pills
     let keyPills = '';
     if (app.keywords?.mustHave?.length > 0) {
       keyPills = '<div class="expand-keywords">' +
@@ -244,13 +334,29 @@
         '</div>';
     }
 
+    let jdSection = '';
+    if (app.jobDescription && app.jobDescription.length > 0) {
+      jdSection = `
+        <div class="expand-jd">
+          <strong>Job Description:</strong>
+          <textarea class="jd-readonly" readonly rows="6">${esc(app.jobDescription)}</textarea>
+          <div class="jd-actions">
+            <button class="btn btn-xs btn-ghost jd-copy" data-jd="${escA(app.jobDescription.substring(0,4000))}">📋 Copy JD</button>
+          </div>
+        </div>`;
+    }
+
+    const colCount = Object.values(visibleCols).filter(Boolean).length;
     expandTr.innerHTML = `
-      <td colspan="11">
+      <td colspan="${colCount}">
         <div class="expand-content">
           <div class="notes"><strong>Notes:</strong> ${esc(app.notes || 'No notes')}</div>
           ${app.referralPerson ? `<div><strong>Referred by:</strong> ${esc(app.referralPerson)}</div>` : ''}
+          ${app.stipend ? `<div><strong>Stipend:</strong> ${esc(app.stipend)}</div>` : ''}
+          ${app.duration ? `<div><strong>Duration:</strong> ${esc(app.duration)}</div>` : ''}
           ${app.jobUrl ? `<div class="job-link"><a href="${escA(app.jobUrl)}" target="_blank" rel="noopener">Open job listing →</a></div>` : ''}
           ${keyPills}
+          ${jdSection}
           <div><strong>Updated:</strong> ${formatDate(app.dateUpdated)}  •  <strong>Logged from:</strong> ${app.loggedFrom || 'popup'}</div>
         </div>
       </td>`;
@@ -258,7 +364,80 @@
     expandedRow = expandTr;
   }
 
-  /* ─── Edit Modal ─── */
+  /* ─── Inline Status Edit ─── */
+  async function handleInlineStatus(appId, newStatus) {
+    try {
+      await updateApplication(appId, { status: newStatus });
+      showToast(`Status → ${newStatus}`);
+      await loadData();
+    } catch (e) { console.error('Inline status update failed:', e); }
+  }
+
+  /* ─── Bulk Actions ─── */
+  function updateBulkBar() {
+    if (selectedIds.size > 0) {
+      bulkBar.classList.remove('hidden');
+      $('bulk-count').textContent = `${selectedIds.size} selected`;
+    } else {
+      bulkBar.classList.add('hidden');
+    }
+  }
+
+  async function bulkChangeStatus(status) {
+    if (!status) return;
+    for (const id of selectedIds) {
+      try { await updateApplication(id, { status }); } catch { /* skip */ }
+    }
+    showToast(`Updated ${selectedIds.size} → ${status}`);
+    selectedIds.clear();
+    $('bulk-status').selectedIndex = 0;
+    await loadData();
+  }
+
+  function bulkExport() {
+    const apps = allApps.filter(a => selectedIds.has(a.id));
+    const csv = exportAsCSV(apps, settings);
+    downloadCSV(csv);
+    showToast(`Exported ${apps.length} entries`);
+  }
+
+  async function bulkDelete() {
+    if (!confirm(`Delete ${selectedIds.size} applications? This cannot be undone.`)) return;
+    for (const id of selectedIds) {
+      try { await deleteApplication(id); } catch { /* skip */ }
+    }
+    showToast(`Deleted ${selectedIds.size} entries`);
+    selectedIds.clear();
+    await loadData();
+  }
+
+  /* ─── Column Visibility ─── */
+  function renderColPanel() {
+    const box = $('col-checkboxes');
+    box.innerHTML = ALL_COLUMNS.filter(c => c.key !== 'check').map(c => `
+      <label class="col-check-label">
+        <input type="checkbox" class="col-vis-check" data-col="${c.key}" ${visibleCols[c.key] ? 'checked' : ''}>
+        ${c.label}
+      </label>
+    `).join('');
+  }
+
+  function applyColVisibility() {
+    ALL_COLUMNS.forEach(c => {
+      const cells = document.querySelectorAll(`.col-${c.key}, th.col-${c.key}`);
+      cells.forEach(cell => { cell.style.display = visibleCols[c.key] ? '' : 'none'; });
+    });
+    // Apply to thead
+    const ths = appTable.querySelectorAll('thead th');
+    const colKeys = ALL_COLUMNS.map(c => c.key);
+    ths.forEach((th, i) => {
+      if (i < colKeys.length) {
+        th.style.display = visibleCols[colKeys[i]] ? '' : 'none';
+      }
+    });
+  }
+
+  /* ─── Edit Modal (v3: job type, work mode) ─── */
   function openEditModal(app) {
     editingApp = app;
     $('edit-company').value = app.company || '';
@@ -267,6 +446,8 @@
     $('edit-source').value = app.source || '';
     $('edit-status').value = app.status || 'Applied';
     $('edit-email').value = app.email || 'A';
+    $('edit-job-type').value = app.jobType || 'Unknown';
+    $('edit-work-mode').value = app.workMode || 'Unknown';
     $('edit-referral').value = app.referralPerson || '';
     $('edit-notes').value = app.notes || '';
     $('edit-url').value = app.jobUrl || '';
@@ -284,6 +465,8 @@
       source: $('edit-source').value.trim(),
       status: $('edit-status').value,
       email: $('edit-email').value,
+      jobType: $('edit-job-type').value,
+      workMode: $('edit-work-mode').value,
       referralPerson: $('edit-referral').value.trim(),
       referral: !!$('edit-referral').value.trim(),
       notes: $('edit-notes').value.trim(),
@@ -292,6 +475,7 @@
     try {
       await updateApplication(editingApp.id, patch);
       closeEditModal();
+      showToast('Saved');
       await loadData();
     } catch (e) { console.error('Update failed:', e); alert('Failed to update.'); }
   }
@@ -309,6 +493,7 @@
     try {
       await deleteApplication(deletingApp.id);
       closeDeleteModal();
+      showToast('Deleted');
       await loadData();
     } catch (e) { console.error('Delete failed:', e); alert('Failed to delete.'); }
   }
@@ -316,6 +501,14 @@
   /* ─── CSV Export ─── */
   function handleExport() {
     const csv = exportAsCSV(allApps, settings);
+    downloadCSV(csv);
+    btnExport.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Exported!';
+    setTimeout(() => {
+      btnExport.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Export CSV';
+    }, 1500);
+  }
+
+  function downloadCSV(csv) {
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -323,33 +516,96 @@
     a.download = `jobtrackr_export_${new Date().toISOString().split('T')[0]}.csv`;
     document.body.appendChild(a); a.click(); document.body.removeChild(a);
     URL.revokeObjectURL(url);
-    btnExport.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"/></svg> Exported!';
-    setTimeout(() => {
-      btnExport.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg> Export CSV';
-    }, 1500);
+  }
+
+  /* ─── Toast ─── */
+  function showToast(msg) {
+    toast.textContent = msg;
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.add('hidden'), 2000);
   }
 
   /* ─── Wire Events ─── */
   function wireEvents() {
-    filterSearch.addEventListener('input', debounce(renderTable, 200));
-    filterPlatform.addEventListener('change', renderTable);
-    filterEmail.addEventListener('change', renderTable);
-    filterStatus.addEventListener('change', renderTable);
-    filterSource.addEventListener('change', renderTable);
-    filterSort.addEventListener('change', renderTable);
+    // Filters
+    filterSearch.addEventListener('input', debounce(() => { renderTable(); updateFilterCount(); }, 200));
+    [filterPlatform, filterPlatformCat, filterJobType, filterWorkMode, filterEmail, filterStatus, filterSource, filterSort].forEach(f =>
+      f.addEventListener('change', () => { renderTable(); updateFilterCount(); })
+    );
+    filterReferralOnly.addEventListener('change', () => { renderTable(); updateFilterCount(); });
+    filterHasJD.addEventListener('change', () => { renderTable(); updateFilterCount(); });
+    btnClearFilters.addEventListener('click', clearAllFilters);
 
+    // Skills filter
+    skillsFilter.addEventListener('change', renderSkillsCard);
+
+    // Table actions (delegated)
     tableBody.addEventListener('click', (e) => {
       const btn = e.target.closest('.action-btn');
-      if (!btn) return;
-      e.stopPropagation();
-      const id = btn.getAttribute('data-id');
-      const action = btn.getAttribute('data-action');
-      const app = allApps.find(a => a.id === id);
-      if (!app) return;
-      if (action === 'edit') openEditModal(app);
-      if (action === 'delete') openDeleteModal(app);
+      if (btn) {
+        e.stopPropagation();
+        const id = btn.getAttribute('data-id');
+        const action = btn.getAttribute('data-action');
+        const app = allApps.find(a => a.id === id);
+        if (!app) return;
+        if (action === 'edit') openEditModal(app);
+        if (action === 'delete') openDeleteModal(app);
+        return;
+      }
+      // JD copy
+      const jdCopy = e.target.closest('.jd-copy');
+      if (jdCopy) {
+        const jd = jdCopy.getAttribute('data-jd');
+        navigator.clipboard.writeText(jd).then(() => {
+          jdCopy.textContent = '✓ Copied!';
+          setTimeout(() => { jdCopy.textContent = '📋 Copy JD'; }, 1500);
+        });
+        return;
+      }
     });
 
+    // Inline status change
+    tableBody.addEventListener('change', (e) => {
+      if (e.target.classList.contains('inline-status')) {
+        handleInlineStatus(e.target.dataset.id, e.target.value);
+      }
+    });
+
+    // Row checkboxes
+    tableBody.addEventListener('change', (e) => {
+      if (e.target.classList.contains('row-check')) {
+        const id = e.target.dataset.id;
+        if (e.target.checked) selectedIds.add(id); else selectedIds.delete(id);
+        updateBulkBar();
+      }
+    });
+
+    // Select all
+    $('select-all').addEventListener('change', (e) => {
+      const checks = tableBody.querySelectorAll('.row-check');
+      checks.forEach(c => {
+        c.checked = e.target.checked;
+        if (e.target.checked) selectedIds.add(c.dataset.id); else selectedIds.delete(c.dataset.id);
+      });
+      updateBulkBar();
+    });
+
+    // Bulk actions
+    $('bulk-status').addEventListener('change', (e) => { bulkChangeStatus(e.target.value); });
+    $('bulk-export').addEventListener('click', bulkExport);
+    $('bulk-delete').addEventListener('click', bulkDelete);
+
+    // Column visibility
+    $('btn-col-toggle').addEventListener('click', () => { $('col-panel').classList.toggle('hidden'); });
+    $('col-panel').addEventListener('change', (e) => {
+      if (e.target.classList.contains('col-vis-check')) {
+        visibleCols[e.target.dataset.col] = e.target.checked;
+        saveColVisibility();
+        applyColVisibility();
+      }
+    });
+
+    // Modals
     $('modal-close').addEventListener('click', closeEditModal);
     $('modal-cancel').addEventListener('click', closeEditModal);
     $('modal-save').addEventListener('click', handleSaveEdit);
@@ -359,12 +615,14 @@
     deleteModal.addEventListener('click', e => { if (e.target === deleteModal) closeDeleteModal(); });
     btnExport.addEventListener('click', handleExport);
 
+    // Storage change listener
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area === 'sync' && (changes.jt_apps || changes.jt_settings)) loadData();
     });
 
+    // Escape key
     document.addEventListener('keydown', e => {
-      if (e.key === 'Escape') { closeEditModal(); closeDeleteModal(); }
+      if (e.key === 'Escape') { closeEditModal(); closeDeleteModal(); $('col-panel').classList.add('hidden'); }
     });
   }
 

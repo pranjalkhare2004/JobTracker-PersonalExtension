@@ -21,6 +21,7 @@
   let selectedStatus = 'Applied';
   let referralOn = false;
   let keywordsData = null;
+  let saveJDOn = false;
 
   /* ─── DOM Refs ─── */
   const $ = id => document.getElementById(id);
@@ -33,8 +34,14 @@
   const inputUrl = $('input-url');
   const inputNotes = $('input-notes');
   const inputReferralPerson = $('input-referral-person');
+  const inputJobType = $('input-job-type');
+  const inputWorkMode = $('input-work-mode');
+  const inputStipend = $('input-stipend');
+  const inputDuration = $('input-duration');
+  const conditionalFields = $('conditional-fields');
 
   const platformBadge = $('platform-badge');
+  const platformCategoryBadge = $('platform-category-badge');
   const scrapeIndicator = $('scrape-indicator');
 
   const autofillBanner = $('autofill-failed');
@@ -112,6 +119,9 @@
     $('set-default-email').value = settings.defaultEmail || 'A';
     $('set-default-status').value = settings.defaultStatus || 'Applied';
     $('set-weekly-goal').value = settings.weeklyGoal || 5;
+    $('set-save-jd').checked = settings.saveJD || false;
+    saveJDOn = settings.saveJD || false;
+    $('toggle-save-jd').setAttribute('aria-checked', saveJDOn);
   }
 
   /* ═══════════════════════════════
@@ -163,8 +173,19 @@
 
     platformBadge.textContent = data.platform || 'Other';
     platformBadge.dataset.platform = data.platform || 'Other';
+    platformCategoryBadge.textContent = data.platformCategory || 'Other';
+    platformCategoryBadge.dataset.category = data.platformCategory || 'Other';
     scrapeIndicator.dataset.quality = data.scrapeQuality || 'failed';
     scrapeIndicator.title = `Scrape: ${data.scrapeQuality || 'failed'}`;
+
+    // Job type and work mode
+    if (data.jobType && data.jobType !== 'Unknown') inputJobType.value = data.jobType;
+    if (data.workMode && data.workMode !== 'Unknown') inputWorkMode.value = data.workMode;
+    updateConditionalFields();
+
+    // Stipend & duration
+    if (data.stipend) inputStipend.value = data.stipend;
+    if (data.duration) inputDuration.value = data.duration;
 
     // Show aggregator hint
     if (data.siteType === 'aggregator') {
@@ -182,6 +203,15 @@
 
     // Check for duplicates
     checkForDuplicates();
+  }
+
+  function updateConditionalFields() {
+    const jt = inputJobType.value;
+    if (jt === 'Internship' || jt === 'Contract') {
+      conditionalFields.classList.remove('hidden');
+    } else {
+      conditionalFields.classList.add('hidden');
+    }
   }
 
   /* ═══════════════════════════════
@@ -407,7 +437,12 @@
       referralPerson: referralOn ? inputReferralPerson.value.trim() : '',
       notes: inputNotes.value.trim(),
       loggedFrom: 'popup',
-      keywords: keywordsData || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] }
+      keywords: keywordsData || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] },
+      jobType: inputJobType.value || 'Unknown',
+      workMode: inputWorkMode.value || 'Unknown',
+      jobDescription: saveJDOn ? (scrapedData?.jobDescription || '') : '',
+      stipend: inputStipend.value.trim(),
+      duration: inputDuration.value.trim()
     };
 
     try {
@@ -454,7 +489,12 @@
       notes: inputNotes.value.trim(),
       loggedFrom: 'popup',
       linkedJobId: linkedJobId || '',
-      keywords: keywordsData || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] }
+      keywords: keywordsData || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] },
+      jobType: inputJobType.value || 'Unknown',
+      workMode: inputWorkMode.value || 'Unknown',
+      jobDescription: saveJDOn ? (scrapedData?.jobDescription || '') : '',
+      stipend: inputStipend.value.trim(),
+      duration: inputDuration.value.trim()
     };
 
     try {
@@ -527,6 +567,15 @@
       jdChevron.classList.toggle('open', !isOpen);
     });
 
+    // Job type change (show/hide conditional fields)
+    inputJobType.addEventListener('change', updateConditionalFields);
+
+    // Save JD toggle
+    $('toggle-save-jd').addEventListener('click', () => {
+      saveJDOn = !saveJDOn;
+      $('toggle-save-jd').setAttribute('aria-checked', saveJDOn);
+    });
+
     // Copy keywords
     $('btn-copy-keywords').addEventListener('click', async () => {
       if (!keywordsData) return;
@@ -588,7 +637,8 @@
         labelA: $('set-label-a').value.trim(), emailA: $('set-email-a').value.trim(),
         labelB: $('set-label-b').value.trim(), emailB: $('set-email-b').value.trim(),
         defaultEmail: $('set-default-email').value, defaultStatus: $('set-default-status').value,
-        weeklyGoal: parseInt($('set-weekly-goal').value) || 5
+        weeklyGoal: parseInt($('set-weekly-goal').value) || 5,
+        saveJD: $('set-save-jd').checked
       });
       applySettings();
       settingsPanel.classList.add('hidden');

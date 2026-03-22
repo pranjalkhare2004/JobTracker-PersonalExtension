@@ -71,6 +71,7 @@
           <input type="text" id="input-role" placeholder="e.g. Software Engineer" maxlength="200">
         </div>
         <div class="platform-badge-wrap">
+          <span id="platform-category-badge" class="platform-category-badge" data-category="Other">—</span>
           <span id="platform-badge" class="platform-badge" data-platform="Other">—</span>
           <span id="scrape-indicator" class="scrape-dot" title="Scrape quality"></span>
         </div>
@@ -100,6 +101,39 @@
         <div class="field flex-1">
           <label for="input-url">Job URL</label>
           <input type="url" id="input-url" placeholder="https://..." maxlength="2000">
+        </div>
+      </div>
+
+      <div class="field-row-2">
+        <div class="field flex-1">
+          <label for="input-job-type">Job Type</label>
+          <select id="input-job-type">
+            <option value="Unknown">Unknown</option>
+            <option value="Full-time">Full-time</option>
+            <option value="Internship">Internship</option>
+            <option value="Contract">Contract</option>
+            <option value="Part-time">Part-time</option>
+          </select>
+        </div>
+        <div class="field flex-1">
+          <label for="input-work-mode">Work Mode</label>
+          <select id="input-work-mode">
+            <option value="Unknown">Unknown</option>
+            <option value="Remote">Remote</option>
+            <option value="Hybrid">Hybrid</option>
+            <option value="On-site">On-site</option>
+          </select>
+        </div>
+      </div>
+
+      <div id="conditional-fields" class="field-row-2 hidden">
+        <div class="field flex-1">
+          <label for="input-stipend">Stipend / CTC</label>
+          <input type="text" id="input-stipend" placeholder="e.g. ₹25,000/month" maxlength="100">
+        </div>
+        <div class="field flex-1">
+          <label for="input-duration">Duration</label>
+          <input type="text" id="input-duration" placeholder="e.g. 6 months" maxlength="100">
         </div>
       </div>
     </section>
@@ -169,6 +203,16 @@
       </div>
     </section>
 
+    <!-- Save JD Toggle -->
+    <section class="form-section" id="save-jd-section">
+      <div class="toggle-row">
+        <label class="toggle-label"><span>Save JD text</span><span class="toggle-hint">(uses storage quota)</span></label>
+        <button id="toggle-save-jd" class="toggle" role="switch" aria-checked="false">
+          <span class="toggle-slider"></span>
+        </button>
+      </div>
+    </section>
+
     <!-- Notes -->
     <section class="form-section">
       <textarea id="input-notes" placeholder="Quick note (optional)" maxlength="500" rows="1"></textarea>
@@ -216,6 +260,7 @@
         <div class="field-inline"><label>Default Email</label><select id="set-default-email"><option value="A">Email A</option><option value="B">Email B</option></select></div>
         <div class="field-inline"><label>Default Status</label><select id="set-default-status"><option value="Applied">Applied</option><option value="Referral Pending">Referral Pending</option><option value="Re-applied (Referral)">Re-applied</option><option value="Interviewing">Interviewing</option></select></div>
         <div class="field-inline"><label>Weekly Goal</label><input type="number" id="set-weekly-goal" min="1" max="100" value="5"></div>
+        <div class="field-inline"><label>Save JD by default</label><input type="checkbox" id="set-save-jd"></div>
       </div>
       <div class="settings-group">
         <h3>Data</h3>

@@ -13,7 +13,8 @@ const DEFAULT_SETTINGS = {
   defaultStatus: 'Applied',
   labelA: 'Primary',
   labelB: 'Referral',
-  weeklyGoal: 5
+  weeklyGoal: 5,
+  saveJD: false
 };
 
 /* ─── Chrome Storage Promise Wrappers ─── */
@@ -64,7 +65,13 @@ async function saveSettings(patch) {
 /* ─── Application CRUD ─── */
 async function getAllApplications() {
   const result = await storageGet(STORAGE_KEY_APPS);
-  return result[STORAGE_KEY_APPS] || [];
+  const apps = result[STORAGE_KEY_APPS] || [];
+  // Backfill v3 fields for old entries
+  return apps.map(a => ({
+    jobType: 'Unknown', workMode: 'Unknown', jobDescription: '',
+    platformCategory: 'Other', stipend: '', duration: '',
+    ...a
+  }));
 }
 
 async function saveApplication(data) {
@@ -78,6 +85,7 @@ async function saveApplication(data) {
     rawJobId: data.rawJobId || '',
     platform: data.platform || 'Other',
     siteType: data.siteType || 'employer',
+    platformCategory: data.platformCategory || 'Other',
     company: sanitize(data.company, 200),
     role: sanitize(data.role, 200),
     location: sanitize(data.location || '', 200),
@@ -94,7 +102,12 @@ async function saveApplication(data) {
     dateUpdated: now,
     loggedFrom: data.loggedFrom || 'popup',
     linkedJobId: data.linkedJobId || '',
-    keywords: data.keywords || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] }
+    keywords: data.keywords || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] },
+    jobType: data.jobType || 'Unknown',
+    workMode: data.workMode || 'Unknown',
+    jobDescription: settings.saveJD ? sanitize(data.jobDescription || '', 8000) : '',
+    stipend: sanitize(data.stipend || '', 100),
+    duration: sanitize(data.duration || '', 100)
   };
 
   apps.unshift(entry);
@@ -138,6 +151,7 @@ async function getStats() {
 
   const thisWeek = apps.filter(a => new Date(a.dateApplied) >= weekStart);
   const byStatus = {}, byEmail = { A: 0, B: 0 }, byPlatform = {}, bySource = {};
+  const byJobType = {}, byWorkMode = {};
   let referralCount = 0;
 
   apps.forEach(a => {
@@ -146,7 +160,14 @@ async function getStats() {
     byPlatform[a.platform] = (byPlatform[a.platform] || 0) + 1;
     if (a.source) bySource[a.source] = (bySource[a.source] || 0) + 1;
     if (a.referral) referralCount++;
+    const jt = a.jobType || 'Unknown';
+    byJobType[jt] = (byJobType[jt] || 0) + 1;
+    const wm = a.workMode || 'Unknown';
+    byWorkMode[wm] = (byWorkMode[wm] || 0) + 1;
   });
+
+  // Top source
+  const topSource = Object.entries(bySource).sort((a, b) => b[1] - a[1])[0];
 
   // Skill frequency across all jobs
   const skillFreq = {};
@@ -170,6 +191,8 @@ async function getStats() {
     activePipeline: (byStatus['Applied'] || 0) + (byStatus['Interviewing'] || 0),
     referralCount,
     byStatus, byEmail, byPlatform, bySource,
+    byJobType, byWorkMode,
+    topSource: topSource ? { source: topSource[0], count: topSource[1] } : null,
     topSkills
   };
 }
@@ -177,9 +200,10 @@ async function getStats() {
 /* ─── CSV Export ─── */
 function exportAsCSV(apps, settings) {
   const headers = [
-    'Date Applied', 'Company', 'Role', 'Location', 'Platform', 'Source',
-    'Job ID', 'Email Used', 'Status', 'Referral', 'Referred By', 'Notes',
-    'Job URL', 'Date Updated', 'Linked Job ID'
+    'Date Applied', 'Company', 'Role', 'Location', 'Platform', 'Platform Category',
+    'Source', 'Job ID', 'Job Type', 'Work Mode', 'Stipend', 'Duration',
+    'Email Used', 'Status', 'Referral', 'Referred By', 'Notes',
+    'Job URL', 'Date Updated', 'Linked Job ID', 'Has JD'
   ];
 
   const esc = val => {
@@ -189,13 +213,16 @@ function exportAsCSV(apps, settings) {
 
   const rows = apps.map(a => [
     a.dateApplied ? new Date(a.dateApplied).toLocaleDateString() : '',
-    a.company, a.role, a.location || '', a.platform, a.source || '',
-    a.rawJobId || '',
+    a.company, a.role, a.location || '', a.platform, a.platformCategory || 'Other',
+    a.source || '', a.rawJobId || '',
+    a.jobType || 'Unknown', a.workMode || 'Unknown',
+    a.stipend || '', a.duration || '',
     a.email === 'A' ? `${settings.labelA || 'A'} (${settings.emailA})` : `${settings.labelB || 'B'} (${settings.emailB})`,
     a.status, a.referral ? 'Yes' : 'No', a.referralPerson || '',
     a.notes || '', a.jobUrl || '',
     a.dateUpdated ? new Date(a.dateUpdated).toLocaleDateString() : '',
-    a.linkedJobId || ''
+    a.linkedJobId || '',
+    a.jobDescription ? 'Yes' : 'No'
   ].map(esc).join(','));
 
   return [headers.join(','), ...rows].join('\n');

@@ -144,6 +144,26 @@ textarea:focus { min-height: 60px; }
 .platform-badge[data-platform="SmartRecruiters"] { background: #1B9AD1; }
 .platform-badge[data-platform="Ashby"] { background: #5A54E8; }
 .platform-badge[data-platform="Taleo"] { background: #B31E1E; }
+.platform-badge[data-platform="Glassdoor"] { background: #0caa41; }
+.platform-badge[data-platform="Internshala"] { background: #00a5ec; }
+.platform-badge[data-platform="Unstop"] { background: #0073b1; }
+.platform-badge[data-platform="Cutshort"] { background: #ff6b6b; }
+.platform-badge[data-platform="Hirist"] { background: #38b2ac; }
+.platform-badge[data-platform="Instahyre"] { background: #e74c3c; }
+.platform-badge[data-platform="Foundit"] { background: #6C3EC1; }
+.platform-badge[data-platform="SimplyHired"] { background: #7c3aed; }
+.platform-badge[data-platform="WorkAtStartup"] { background: #ff6600; }
+.platform-badge[data-platform="Uplers"] { background: #1d4ed8; }
+.platform-badge[data-platform="Rippling"] { background: #0066FF; }
+.platform-badge[data-platform="Career Page"] { background: #6b7280; }
+
+.platform-category-badge { display: inline-block; padding: 3px 8px; font-size: 9px; font-weight: 600; border-radius: var(--radius-pill); background: var(--bg-tertiary); color: var(--text-muted); white-space: nowrap; text-transform: uppercase; letter-spacing: 0.3px; }
+.platform-category-badge[data-category="Aggregator"] { background: rgba(59,130,246,0.08); color: #3b82f6; }
+.platform-category-badge[data-category="Career"] { background: rgba(16,185,129,0.08); color: #10b981; }
+.platform-category-badge[data-category="Startup"] { background: rgba(245,158,11,0.08); color: #f59e0b; }
+.platform-category-badge[data-category="Fresher"] { background: rgba(139,92,246,0.08); color: #8b5cf6; }
+
+.toggle-hint { font-size: 10px; color: var(--text-muted); margin-left: 4px; font-weight: 400; }
 
 .scrape-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--text-muted); }
 .scrape-dot[data-quality="full"] { background: #10B981; }

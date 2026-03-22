@@ -14,10 +14,13 @@
         <span class="dash-logo">J</span>
         <h1 class="dash-title">JobTrackr <span class="dash-subtitle">Dashboard</span></h1>
       </div>
-      <button id="btn-export" class="btn btn-outline">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-        Export CSV
-      </button>
+      <div class="dash-header-right">
+        <button id="btn-col-toggle" class="btn btn-ghost btn-sm" title="Toggle columns">☰ Columns</button>
+        <button id="btn-export" class="btn btn-outline">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+          Export CSV
+        </button>
+      </div>
     </header>
 
     <!-- Stats Row -->
@@ -41,9 +44,44 @@
       </div>
     </section>
 
+    <!-- New v3 Stats Row -->
+    <section class="stats-row stats-row-secondary">
+      <div class="stat-card stat-card-sm">
+        <div class="stat-number" id="stat-fulltime">0</div>
+        <div class="stat-label">Full-time</div>
+      </div>
+      <div class="stat-card stat-card-sm">
+        <div class="stat-number" id="stat-intern">0</div>
+        <div class="stat-label">Internships</div>
+      </div>
+      <div class="stat-card stat-card-sm">
+        <div class="stat-number" id="stat-remote">0</div>
+        <div class="stat-label">Remote</div>
+      </div>
+      <div class="stat-card stat-card-sm">
+        <div class="stat-number" id="stat-hybrid">0</div>
+        <div class="stat-label">Hybrid</div>
+      </div>
+      <div class="stat-card stat-card-sm">
+        <div class="stat-number" id="stat-onsite">0</div>
+        <div class="stat-label">On-site</div>
+      </div>
+      <div class="stat-card stat-card-sm">
+        <div class="stat-label">Top Source</div>
+        <div class="stat-number stat-number-sm" id="stat-top-source">—</div>
+      </div>
+    </section>
+
     <!-- Top Skills Card -->
     <section class="skills-card" id="skills-card">
-      <h2 class="card-title">Top Skills Requested</h2>
+      <div class="skills-header">
+        <h2 class="card-title">Top Skills Requested</h2>
+        <select id="skills-filter" class="filter-select filter-select-sm">
+          <option value="all">All</option>
+          <option value="Full-time">Full-time only</option>
+          <option value="Internship">Internships only</option>
+        </select>
+      </div>
       <div class="skills-bars" id="skills-bars"></div>
     </section>
 
@@ -56,7 +94,21 @@
         <option>Naukri</option><option>Wellfound</option><option>Ashby</option>
         <option>Taleo</option><option>iCIMS</option><option>BambooHR</option>
         <option>Jobvite</option><option>Workable</option><option>Breezy</option>
-        <option>Rippling</option><option>Other</option>
+        <option>Rippling</option><option>Glassdoor</option><option>Internshala</option>
+        <option>Unstop</option><option>Cutshort</option><option>Hirist</option>
+        <option>Instahyre</option><option>Foundit</option><option>SimplyHired</option>
+        <option>WorkAtStartup</option><option>Uplers</option><option>Career Page</option>
+        <option>Other</option>
+      </select>
+      <select id="filter-platform-cat" class="filter-select"><option value="">All Categories</option>
+        <option>Aggregator</option><option>Career</option><option>Startup</option>
+        <option>Fresher</option><option>Other</option>
+      </select>
+      <select id="filter-job-type" class="filter-select"><option value="">All Job Types</option>
+        <option>Full-time</option><option>Internship</option><option>Contract</option><option>Part-time</option><option>Unknown</option>
+      </select>
+      <select id="filter-work-mode" class="filter-select"><option value="">All Work Modes</option>
+        <option>Remote</option><option>Hybrid</option><option>On-site</option><option>Unknown</option>
       </select>
       <select id="filter-email" class="filter-select"><option value="">All Emails</option><option value="A">Email A</option><option value="B">Email B</option></select>
       <select id="filter-status" class="filter-select"><option value="">All Statuses</option>
@@ -65,21 +117,47 @@
       </select>
       <select id="filter-source" class="filter-select"><option value="">All Sources</option>
         <option>LinkedIn</option><option>Naukri</option><option>Indeed</option>
-        <option>Glassdoor</option><option>Wellfound</option><option>Direct</option>
+        <option>Glassdoor</option><option>Wellfound</option><option>Internshala</option>
+        <option>Unstop</option><option>Direct</option>
       </select>
+      <label class="filter-checkbox"><input type="checkbox" id="filter-referral-only"> Referral only</label>
+      <label class="filter-checkbox"><input type="checkbox" id="filter-has-jd"> Has JD</label>
       <select id="filter-sort" class="filter-select">
         <option value="date-desc">Newest first</option>
         <option value="date-asc">Oldest first</option>
         <option value="company">Company A–Z</option>
         <option value="status">Status</option>
       </select>
+      <div class="filter-actions">
+        <span id="filter-count" class="filter-count hidden">0 active</span>
+        <button id="btn-clear-filters" class="btn btn-xs btn-ghost hidden">Clear all</button>
+      </div>
     </section>
+
+    <!-- Bulk Action Bar -->
+    <section id="bulk-bar" class="bulk-bar hidden">
+      <span id="bulk-count">0 selected</span>
+      <select id="bulk-status" class="filter-select">
+        <option value="">Change status...</option>
+        <option>Applied</option><option>Interviewing</option><option>Rejected</option>
+        <option>Offer</option><option>Withdrawn</option>
+      </select>
+      <button id="bulk-export" class="btn btn-sm btn-outline">Export selected</button>
+      <button id="bulk-delete" class="btn btn-sm btn-danger">Delete selected</button>
+    </section>
+
+    <!-- Column Visibility Panel -->
+    <div id="col-panel" class="col-panel hidden">
+      <h3>Visible Columns</h3>
+      <div id="col-checkboxes"></div>
+    </div>
 
     <!-- Applications Table -->
     <section class="table-wrap">
       <table class="app-table" id="app-table">
         <thead>
           <tr>
+            <th class="col-check"><input type="checkbox" id="select-all" title="Select all"></th>
             <th>Date</th>
             <th>Company</th>
             <th>Role</th>
@@ -88,6 +166,8 @@
             <th>Source</th>
             <th>Email</th>
             <th>Status</th>
+            <th class="col-jobtype">Job Type</th>
+            <th class="col-workmode">Work Mode</th>
             <th>Job ID</th>
             <th>Ref</th>
             <th>Actions</th>
@@ -123,6 +203,14 @@
             </select></div>
             <div class="modal-field flex-1"><label>Email</label><select id="edit-email"><option value="A">A</option><option value="B">B</option></select></div>
           </div>
+          <div class="modal-row">
+            <div class="modal-field flex-1"><label>Job Type</label><select id="edit-job-type">
+              <option>Unknown</option><option>Full-time</option><option>Internship</option><option>Contract</option><option>Part-time</option>
+            </select></div>
+            <div class="modal-field flex-1"><label>Work Mode</label><select id="edit-work-mode">
+              <option>Unknown</option><option>Remote</option><option>Hybrid</option><option>On-site</option>
+            </select></div>
+          </div>
           <div class="modal-field"><label>Referred by</label><input type="text" id="edit-referral" maxlength="200"></div>
           <div class="modal-field"><label>Notes</label><textarea id="edit-notes" rows="3" maxlength="500"></textarea></div>
           <div class="modal-field"><label>Job URL</label><input type="url" id="edit-url" maxlength="2000"></div>
@@ -145,6 +233,9 @@
         </div>
       </div>
     </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast hidden"></div>
   </div>
 
   <script src="storage.js"></script>

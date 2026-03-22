@@ -7,7 +7,7 @@ const BG_KEY_APPS = 'jt_apps';
 const BG_KEY_SETTINGS = 'jt_settings';
 const BG_DEFAULTS = {
   emailA: '', emailB: '', defaultEmail: 'A', defaultStatus: 'Applied',
-  labelA: 'Primary', labelB: 'Referral', weeklyGoal: 5
+  labelA: 'Primary', labelB: 'Referral', weeklyGoal: 5, saveJD: false
 };
 
 /* ─── Storage Helpers ─── */
@@ -149,6 +149,7 @@ async function handleSave(data) {
   const entry = {
     id: bgUUID(), jobId: data.jobId || null, rawJobId: data.rawJobId || '',
     platform: data.platform || 'Other', siteType: data.siteType || 'employer',
+    platformCategory: data.platformCategory || 'Other',
     company: bgSanitize(data.company, 200), role: bgSanitize(data.role, 200),
     location: bgSanitize(data.location || '', 200), source: bgSanitize(data.source || 'Direct', 100),
     jobUrl: data.jobUrl || '', email: data.email || settings.defaultEmail || 'A',
@@ -157,7 +158,10 @@ async function handleSave(data) {
     referral: !!data.referral, referralPerson: bgSanitize(data.referralPerson || '', 200),
     notes: bgSanitize(data.notes || '', 500), dateApplied: now, dateUpdated: now,
     loggedFrom: data.loggedFrom || 'popup', linkedJobId: data.linkedJobId || '',
-    keywords: data.keywords || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] }
+    keywords: data.keywords || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] },
+    jobType: data.jobType || 'Unknown', workMode: data.workMode || 'Unknown',
+    jobDescription: settings.saveJD ? bgSanitize(data.jobDescription || '', 8000) : '',
+    stipend: bgSanitize(data.stipend || '', 100), duration: bgSanitize(data.duration || '', 100)
   };
   apps.unshift(entry);
   await bgSet({ [BG_KEY_APPS]: apps });
@@ -175,6 +179,7 @@ async function handleForceSave(data) {
   const entry = {
     id: bgUUID(), jobId: data.jobId || null, rawJobId: data.rawJobId || '',
     platform: data.platform || 'Other', siteType: data.siteType || 'employer',
+    platformCategory: data.platformCategory || 'Other',
     company: bgSanitize(data.company, 200), role: bgSanitize(data.role, 200),
     location: bgSanitize(data.location || '', 200), source: bgSanitize(data.source || 'Direct', 100),
     jobUrl: data.jobUrl || '', email: data.email || settings.defaultEmail || 'A',
@@ -183,7 +188,10 @@ async function handleForceSave(data) {
     referral: !!data.referral, referralPerson: bgSanitize(data.referralPerson || '', 200),
     notes: bgSanitize(data.notes || '', 500), dateApplied: now, dateUpdated: now,
     loggedFrom: data.loggedFrom || 'popup', linkedJobId: data.linkedJobId || '',
-    keywords: data.keywords || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] }
+    keywords: data.keywords || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] },
+    jobType: data.jobType || 'Unknown', workMode: data.workMode || 'Unknown',
+    jobDescription: settings.saveJD ? bgSanitize(data.jobDescription || '', 8000) : '',
+    stipend: bgSanitize(data.stipend || '', 100), duration: bgSanitize(data.duration || '', 100)
   };
   apps.unshift(entry);
   await bgSet({ [BG_KEY_APPS]: apps });

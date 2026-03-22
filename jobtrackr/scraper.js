@@ -37,8 +37,237 @@
   const SOURCE_MAP = {
     'linkedin': 'LinkedIn', 'naukri': 'Naukri', 'indeed': 'Indeed',
     'glassdoor': 'Glassdoor', 'wellfound': 'Wellfound', 'angellist': 'Wellfound',
-    'direct': 'Direct'
+    'direct': 'Direct', 'internshala': 'Internshala', 'unstop': 'Unstop',
+    'cutshort': 'Cutshort', 'foundit': 'Foundit', 'instahyre': 'Instahyre',
+    'hirist': 'Hirist', 'simplyhired': 'SimplyHired'
   };
+
+  /* ═══════════════════════════════
+     PLATFORM MAP (Section 4)
+     ═══════════════════════════════ */
+
+  const PLATFORM_MAP = [
+    // Aggregators
+    { match: 'linkedin.com',        name: 'LinkedIn',        category: 'Aggregator', type: 'aggregator' },
+    { match: 'glassdoor.co.in',     name: 'Glassdoor',       category: 'Aggregator', type: 'aggregator' },
+    { match: 'glassdoor.com',       name: 'Glassdoor',       category: 'Aggregator', type: 'aggregator' },
+    { match: 'indeed.com',          name: 'Indeed',          category: 'Aggregator', type: 'aggregator' },
+    { match: 'in.indeed.com',       name: 'Indeed',          category: 'Aggregator', type: 'aggregator' },
+    { match: 'naukri.com',          name: 'Naukri',          category: 'Aggregator', type: 'aggregator' },
+    { match: 'foundit.in',          name: 'Foundit',         category: 'Aggregator', type: 'aggregator' },
+    { match: 'simplyhired.co.in',   name: 'SimplyHired',     category: 'Aggregator', type: 'aggregator' },
+    // Startup / curated
+    { match: 'wellfound.com',       name: 'Wellfound',       category: 'Startup',    type: 'employer' },
+    { match: 'angel.co',            name: 'Wellfound',       category: 'Startup',    type: 'employer' },
+    { match: 'cutshort.io',         name: 'Cutshort',        category: 'Startup',    type: 'employer' },
+    { match: 'workatastartup.com',  name: 'WorkAtStartup',   category: 'Startup',    type: 'aggregator' },
+    { match: 'instahyre.com',       name: 'Instahyre',       category: 'Startup',    type: 'aggregator' },
+    { match: 'hirist.tech',         name: 'Hirist',          category: 'Startup',    type: 'aggregator' },
+    // Fresher-focused
+    { match: 'internshala.com',     name: 'Internshala',     category: 'Fresher',    type: 'aggregator' },
+    { match: 'unstop.com',          name: 'Unstop',          category: 'Fresher',    type: 'aggregator' },
+    // Contract/remote
+    { match: 'uplers.com',          name: 'Uplers',          category: 'Other',       type: 'aggregator' },
+    // ATS platforms (employer-hosted)
+    { match: 'myworkdayjobs.com',   name: 'Workday',         category: 'Career',     type: 'employer' },
+    { match: 'myworkday.com',       name: 'Workday',         category: 'Career',     type: 'employer' },
+    { match: 'greenhouse.io',       name: 'Greenhouse',      category: 'Career',     type: 'employer' },
+    { match: 'lever.co',            name: 'Lever',           category: 'Career',     type: 'employer' },
+    { match: 'smartrecruiters.com', name: 'SmartRecruiters', category: 'Career',     type: 'employer' },
+    { match: 'ashbyhq.com',         name: 'Ashby',           category: 'Career',     type: 'employer' },
+    { match: 'rippling.com',        name: 'Rippling',        category: 'Career',     type: 'employer' },
+    { match: 'icims.com',           name: 'iCIMS',           category: 'Career',     type: 'employer' },
+    { match: 'bamboohr.com',        name: 'BambooHR',        category: 'Career',     type: 'employer' },
+    { match: 'jobvite.com',         name: 'Jobvite',         category: 'Career',     type: 'employer' },
+    { match: 'taleo.net',           name: 'Taleo',           category: 'Career',     type: 'employer' },
+    { match: 'breezy.hr',           name: 'Breezy',          category: 'Career',     type: 'employer' },
+    { match: 'workable.com',        name: 'Workable',        category: 'Career',     type: 'employer' },
+  ];
+
+  function getPlatformInfo(hostname, pathname) {
+    pathname = pathname || '';
+    for (const p of PLATFORM_MAP) {
+      if (hostname.includes(p.match)) {
+        return { platform: p.name, platformCategory: p.category, siteType: p.type };
+      }
+    }
+    // Career page detection
+    if (
+      hostname.startsWith('careers.') ||
+      hostname.includes('.careers.') ||
+      pathname.includes('/careers') ||
+      pathname.includes('/jobs') ||
+      pathname.includes('/work-with-us') ||
+      pathname.includes('/join-us') ||
+      pathname.includes('/openings')
+    ) {
+      return { platform: 'Career Page', platformCategory: 'Career', siteType: 'employer' };
+    }
+    return { platform: 'Other', platformCategory: 'Other', siteType: 'employer' };
+  }
+
+  /* ═══════════════════════════════
+     JOB TYPE DETECTION (Section 2A)
+     ═══════════════════════════════ */
+
+  function detectJobType(roleText, jdText) {
+    const role = (roleText || '').toLowerCase();
+    const jd = (jdText || '').toLowerCase();
+
+    // Role title check (highest priority)
+    if (/\bintern\b|_intern\b|-intern\b|\binternship\b|\btrainee\b|\bapprentice\b/i.test(role)) return 'Internship';
+    if (/\bcontract\b|\bcontractor\b|\bconsultant\b|\bfreelance\b|\btemp\b|\btemporary\b/i.test(role)) return 'Contract';
+
+    // JSON-LD check
+    try {
+      const scripts = typeof document !== 'undefined' ? document.querySelectorAll('script[type="application/ld+json"]') : [];
+      for (const s of scripts) {
+        try {
+          let data = JSON.parse(s.textContent);
+          if (Array.isArray(data)) data = data.find(d => d['@type'] === 'JobPosting') || data[0];
+          if (data?.employmentType) {
+            const et = String(data.employmentType).toUpperCase();
+            if (et === 'INTERN') return 'Internship';
+            if (et === 'CONTRACTOR' || et === 'TEMPORARY') return 'Contract';
+            if (et === 'PART_TIME' || et === 'PART TIME') return 'Part-time';
+            if (et === 'FULL_TIME' || et === 'FULL TIME' || et === 'PERMANENT') return 'Full-time';
+          }
+        } catch { /* skip */ }
+      }
+    } catch { /* ignore */ }
+
+    // JD body signals
+    if (/\binternship\b|\bintern position\b|\bintern role\b|\bstipend\b|\bduration:\s*\d+\s*months?\b|\bcollege students\b|\bfinal year\b|\bundergraduate\b|\bpursuing b\.?tech\b|\bpursuing degree\b/i.test(jd)) return 'Internship';
+    if (/\bcontract role\b|\bcontractual\b|\bfixed term\b|\b\d+-month contract\b|\bcontract to hire\b|\bc2h\b|\bthird party payroll\b/i.test(jd)) return 'Contract';
+    if (/\bpart[- ]?time\b|\b20 hours\b|\bweekends only\b/i.test(jd)) return 'Part-time';
+
+    // Full-time signals in role title
+    if (/\bsde\b|\bswe\b|\bengineer\b|\bdeveloper\b|\banalyst\b|\bassociate\b|\bmanager\b|\blead\b|\barchitect\b/i.test(role)) return 'Full-time';
+
+    // Default
+    if (jd.length > 100) return 'Full-time'; // has a JD, assume full-time
+    return 'Unknown';
+  }
+
+  /* ═══════════════════════════════
+     WORK MODE DETECTION (Section 2B)
+     ═══════════════════════════════ */
+
+  function detectWorkMode(jdText) {
+    // JSON-LD check first
+    try {
+      const scripts = typeof document !== 'undefined' ? document.querySelectorAll('script[type="application/ld+json"]') : [];
+      for (const s of scripts) {
+        try {
+          let data = JSON.parse(s.textContent);
+          if (Array.isArray(data)) data = data.find(d => d['@type'] === 'JobPosting') || data[0];
+          if (data?.jobLocationType === 'TELECOMMUTE') return 'Remote';
+        } catch { /* skip */ }
+      }
+    } catch { /* ignore */ }
+
+    const jd = (jdText || '').toLowerCase();
+    if (!jd || jd.length < 30) return 'Unknown';
+
+    // Explicit remote
+    if (/\bfully remote\b|\b100% remote\b|\bremote[- ]?first\b|\bdistributed team\b|\banywhere in india\b/i.test(jd)) return 'Remote';
+    if (/\bwork from home\b|\bwfh\b/i.test(jd)) return 'Remote';
+
+    // Hybrid
+    if (/\bhybrid\b|\b[23] days? office\b|\bpartial remote\b|\bflexible work\b|\bhybrid model\b|\bwork from office\s*\/\s*home\b/i.test(jd)) return 'Hybrid';
+
+    // On-site
+    if (/\bon[- ]?site\b|\bonsite\b|\bin[- ]?office\b|\boffice only\b|\bwork from office\b|\bno remote\b|\bmust relocate\b/i.test(jd)) return 'On-site';
+
+    // Generic "remote" (lower priority since it might be in "no remote" context)
+    if (/\bremote\b/i.test(jd) && !/\bno remote\b|\bnot remote\b/i.test(jd)) return 'Remote';
+
+    return 'Unknown';
+  }
+
+  /* ═══════════════════════════════
+     STIPEND & DURATION (Section 2C/2D)
+     ═══════════════════════════════ */
+
+  function extractStipend(jdText) {
+    if (!jdText) return '';
+    const m = jdText.match(/(?:stipend|salary|ctc|compensation)[:\s]+([₹$]?[\d,]+(?:\s*[-–]\s*[\d,]+)?(?:\s*(?:lpa|\/month|per month|k\/month|k))?)/i);
+    if (m) return m[1].trim();
+    const m2 = jdText.match(/(?:₹|INR|Rs\.?)\s*[\d,]+(?:\s*[-–]\s*[\d,]+)?(?:\s*(?:lpa|\/month|per month))?/i);
+    if (m2) return m2[0].trim();
+    return '';
+  }
+
+  function extractDuration(jdText) {
+    if (!jdText) return '';
+    const m = jdText.match(/duration[:\s]+(\d+\s*(?:months?|weeks?|years?))/i);
+    if (m) return m[1].trim();
+    const m2 = jdText.match(/(\d+)[- ](?:month|week|year)\s+(?:internship|contract|program)/i);
+    if (m2) return m2[1].trim() + ' month';
+    return '';
+  }
+
+  /* ═══════════════════════════════
+     REQUISITION ID EXTRACTION (Section 3)
+     ═══════════════════════════════ */
+
+  const REQ_LABELS = [
+    'job id', 'job_id', 'job-id', 'jobid',
+    'requisition id', 'requisition_id', 'req id', 'req_id', 'req-id', 'reqid',
+    'req no', 'req no.', 'req number', 'requisition no', 'requisition number',
+    'reference id', 'ref id', 'ref_id', 'ref code', 'refcode', 'ref no',
+    'vacancy code', 'vacancy id', 'vacancy no',
+    'job number', 'job no', 'job no.',
+    'position id', 'position no', 'position number',
+    'opening id', 'opening no',
+    'job code', 'job ref',
+    'posting id', 'posting number',
+    'application id',
+  ];
+
+  function extractRequisitionId(pageText) {
+    if (!pageText) return null;
+    for (const label of REQ_LABELS) {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(escaped + '[:\\s#\\-]+([A-Z0-9][A-Z0-9\\-_/]{2,24})', 'i');
+      const m = pageText.match(re);
+      if (m) return m[1].trim();
+    }
+    return null;
+  }
+
+  function extractReqIdFromDOM() {
+    try {
+      // Check meta tags first
+      const metaNames = ['jobId', 'job_id', 'requisitionId', 'job-posting-id'];
+      for (const n of metaNames) {
+        const el = document.querySelector(`meta[name="${n}"]`) || document.querySelector(`meta[property="job:id"]`);
+        if (el) { const v = el.getAttribute('content')?.trim(); if (v && v.length > 2 && v.length < 30) return v; }
+      }
+      // Check JSON-LD identifier
+      const scripts = document.querySelectorAll('script[type="application/ld+json"]');
+      for (const s of scripts) {
+        try {
+          let data = JSON.parse(s.textContent);
+          if (Array.isArray(data)) data = data.find(d => d['@type'] === 'JobPosting') || data[0];
+          if (data?.identifier) {
+            const val = typeof data.identifier === 'string' ? data.identifier : data.identifier?.value;
+            if (val && val.length > 2 && val.length < 30) return val;
+          }
+        } catch { /* skip */ }
+      }
+      // Scan DOM elements
+      const candidates = document.querySelectorAll('span, p, li, div, td, dt, dd');
+      for (const el of candidates) {
+        const text = el.innerText?.trim() || '';
+        if (text.length > 120 || text.length < 5) continue;
+        const re = /(?:job\s*id|req(?:uisition)?\s*(?:id|no|number|code)|ref\s*(?:id|code|no)|vacancy\s*(?:id|code|no)|position\s*(?:id|no)|job\s*(?:no|number|code|ref))[:\s#\-]+([A-Z0-9][A-Z0-9\-_/]{2,24})/i;
+        const m = text.match(re);
+        if (m) return m[1].trim();
+      }
+    } catch { /* ignore */ }
+    return null;
+  }
 
   function detectSource(url) {
     try {
@@ -213,6 +442,80 @@
       if (host.includes('breezy.hr')) {
         m = path.match(/\/p\/([a-z0-9]+)/i);
         if (m) return { jobId: 'bz_' + m[1], rawJobId: m[1], platform: 'Breezy', siteType: 'employer' };
+      }
+
+      // ─── NEW v3 platforms ───
+
+      // Glassdoor
+      if (host.includes('glassdoor.co') || host.includes('glassdoor.com')) {
+        m = full.match(/[?&]jl=(\d+)/);
+        if (m) return { jobId: 'gd_' + m[1], rawJobId: m[1], platform: 'Glassdoor', siteType: 'aggregator' };
+        m = path.match(/-JV(\d+)/);
+        if (m) return { jobId: 'gd_' + m[1], rawJobId: m[1], platform: 'Glassdoor', siteType: 'aggregator' };
+      }
+
+      // Naukri (additional pattern: jobId param)
+      if (host.includes('naukri.com')) {
+        const nkId = u.searchParams.get('jobId');
+        if (nkId) return { jobId: 'nk_' + nkId, rawJobId: nkId, platform: 'Naukri', siteType: 'aggregator' };
+      }
+
+      // Internshala
+      if (host.includes('internshala.com')) {
+        m = path.match(/\/(?:internship|job)\/detail\/[^\/]+-(\d+)/);
+        if (m) return { jobId: 'is_' + m[1], rawJobId: m[1], platform: 'Internshala', siteType: 'aggregator' };
+        const isId = u.searchParams.get('internship_id');
+        if (isId) return { jobId: 'is_' + isId, rawJobId: isId, platform: 'Internshala', siteType: 'aggregator' };
+      }
+
+      // Unstop
+      if (host.includes('unstop.com')) {
+        m = path.match(/\/opportunity\/[^\/]+-(\d+)/);
+        if (m) return { jobId: 'un_' + m[1], rawJobId: m[1], platform: 'Unstop', siteType: 'aggregator' };
+      }
+
+      // Cutshort
+      if (host.includes('cutshort.io')) {
+        m = path.match(/\/jobs\/[^\/]+\/([a-zA-Z0-9_-]{6,})/);
+        if (m) return { jobId: 'cs_' + m[1], rawJobId: m[1], platform: 'Cutshort', siteType: 'employer' };
+      }
+
+      // Hirist
+      if (host.includes('hirist.tech')) {
+        m = path.match(/-(\d{5,})$/);
+        if (m) return { jobId: 'hi_' + m[1], rawJobId: m[1], platform: 'Hirist', siteType: 'aggregator' };
+      }
+
+      // Instahyre
+      if (host.includes('instahyre.com')) {
+        m = path.match(/\/job\/[^\/]+-([a-z0-9]{8,})/);
+        if (m) return { jobId: 'ih_' + m[1], rawJobId: m[1], platform: 'Instahyre', siteType: 'aggregator' };
+      }
+
+      // Foundit (ex-Monster India)
+      if (host.includes('foundit.in')) {
+        m = path.match(/-(\d{7,})\.html/);
+        if (m) return { jobId: 'fi_' + m[1], rawJobId: m[1], platform: 'Foundit', siteType: 'aggregator' };
+        const fiId = u.searchParams.get('jobId');
+        if (fiId) return { jobId: 'fi_' + fiId, rawJobId: fiId, platform: 'Foundit', siteType: 'aggregator' };
+      }
+
+      // SimplyHired
+      if (host.includes('simplyhired.co.in')) {
+        m = path.match(/\/job\/[^\/]+-([a-z0-9\-]{8,})\//i);
+        if (m) return { jobId: 'sh_' + m[1], rawJobId: m[1], platform: 'SimplyHired', siteType: 'aggregator' };
+      }
+
+      // WorkAtStartup (YC)
+      if (host.includes('workatastartup.com')) {
+        m = path.match(/\/jobs\/(\d+)/);
+        if (m) return { jobId: 'was_' + m[1], rawJobId: m[1], platform: 'WorkAtStartup', siteType: 'aggregator' };
+      }
+
+      // Uplers
+      if (host.includes('uplers.com')) {
+        m = path.match(/\/job\/[^\/]+-(\d+)/);
+        if (m) return { jobId: 'up_' + m[1], rawJobId: m[1], platform: 'Uplers', siteType: 'aggregator' };
       }
 
       // Generic UUID
@@ -483,21 +786,27 @@
     let result = {
       company: '', role: '', rawJobId: null, jobId: null,
       location: '', source: 'Direct', platform: 'Other', siteType: 'employer',
+      platformCategory: 'Other', jobType: 'Unknown', workMode: 'Unknown',
+      stipend: '', duration: '', jobDescription: '',
       canonicalUrl, scrapeQuality: 'failed', keywords: null
     };
 
     try {
+      // ─── Platform info from hostname ───
+      const platInfo = getPlatformInfo(window.location.hostname, window.location.pathname);
+
       // ─── Priority 1: Workday URL parsing ───
       const wd = parseWorkdayUrl(url);
       if (wd) {
-        result = { ...result, ...wd, canonicalUrl, scrapeQuality: 'full' };
+        result = { ...result, ...wd, ...platInfo, canonicalUrl, scrapeQuality: 'full' };
       } else {
         // ─── Extract Job ID from URL ───
         const idResult = extractJobId(url);
         result.jobId = idResult.jobId;
         result.rawJobId = idResult.rawJobId;
-        result.platform = idResult.platform;
-        result.siteType = idResult.siteType;
+        result.platform = platInfo.platform !== 'Other' ? platInfo.platform : idResult.platform;
+        result.siteType = platInfo.siteType;
+        result.platformCategory = platInfo.platformCategory;
 
         // ─── Source detection ───
         result.source = detectSource(url);
@@ -514,13 +823,36 @@
         else result.scrapeQuality = 'failed';
       }
 
-      // ─── JD Keyword extraction ───
+      // ─── JD Text extraction (used for keywords, job type, work mode) ───
+      let jdText = '';
       try {
-        const jdText = getJDText();
+        jdText = getJDText();
         if (jdText.length > 100) {
           result.keywords = extractJDKeywords(jdText);
+          result.jobDescription = jdText.substring(0, 8000); // Cap at 8KB
         }
       } catch { /* silently skip */ }
+
+      // ─── Job type & work mode detection ───
+      result.jobType = detectJobType(result.role, jdText);
+      result.workMode = detectWorkMode(jdText);
+
+      // ─── Stipend & duration (for internships/contracts) ───
+      if (result.jobType === 'Internship' || result.jobType === 'Contract') {
+        result.stipend = extractStipend(jdText);
+        result.duration = extractDuration(jdText);
+      }
+
+      // ─── Fallback requisition ID from DOM/page text ───
+      if (!result.rawJobId) {
+        try {
+          const domReqId = extractReqIdFromDOM();
+          if (domReqId) {
+            result.rawJobId = domReqId;
+            result.jobId = result.jobId || ('dom_' + domReqId);
+          }
+        } catch { /* ignore */ }
+      }
 
     } catch (e) {
       result.scrapeQuality = 'failed';
@@ -566,7 +898,7 @@
     } catch { /* body not available yet, safe to ignore */ }
 
     // Expose for content.js message handler
-    window.__jobTrackrScraper = { scrapeAll, extractJobId, normalizeUrl, parseWorkdayUrl, extractJDKeywords, detectSource };
+    window.__jobTrackrScraper = { scrapeAll, extractJobId, normalizeUrl, parseWorkdayUrl, extractJDKeywords, detectSource, detectJobType, detectWorkMode, extractStipend, extractDuration, extractRequisitionId, getPlatformInfo };
   }
 
 })();
@@ -582,8 +914,41 @@ if (typeof module !== 'undefined' && module.exports) {
   const SOURCE_MAP = {
     'linkedin': 'LinkedIn', 'naukri': 'Naukri', 'indeed': 'Indeed',
     'glassdoor': 'Glassdoor', 'wellfound': 'Wellfound', 'angellist': 'Wellfound',
-    'direct': 'Direct'
+    'direct': 'Direct', 'internshala': 'Internshala', 'unstop': 'Unstop',
+    'cutshort': 'Cutshort', 'foundit': 'Foundit', 'instahyre': 'Instahyre',
+    'hirist': 'Hirist', 'simplyhired': 'SimplyHired'
   };
+  const PLATFORM_MAP = [
+    { match: 'linkedin.com', name: 'LinkedIn', category: 'Aggregator', type: 'aggregator' },
+    { match: 'glassdoor.co.in', name: 'Glassdoor', category: 'Aggregator', type: 'aggregator' },
+    { match: 'glassdoor.com', name: 'Glassdoor', category: 'Aggregator', type: 'aggregator' },
+    { match: 'indeed.com', name: 'Indeed', category: 'Aggregator', type: 'aggregator' },
+    { match: 'naukri.com', name: 'Naukri', category: 'Aggregator', type: 'aggregator' },
+    { match: 'foundit.in', name: 'Foundit', category: 'Aggregator', type: 'aggregator' },
+    { match: 'simplyhired.co.in', name: 'SimplyHired', category: 'Aggregator', type: 'aggregator' },
+    { match: 'wellfound.com', name: 'Wellfound', category: 'Startup', type: 'employer' },
+    { match: 'angel.co', name: 'Wellfound', category: 'Startup', type: 'employer' },
+    { match: 'cutshort.io', name: 'Cutshort', category: 'Startup', type: 'employer' },
+    { match: 'workatastartup.com', name: 'WorkAtStartup', category: 'Startup', type: 'aggregator' },
+    { match: 'instahyre.com', name: 'Instahyre', category: 'Startup', type: 'aggregator' },
+    { match: 'hirist.tech', name: 'Hirist', category: 'Startup', type: 'aggregator' },
+    { match: 'internshala.com', name: 'Internshala', category: 'Fresher', type: 'aggregator' },
+    { match: 'unstop.com', name: 'Unstop', category: 'Fresher', type: 'aggregator' },
+    { match: 'uplers.com', name: 'Uplers', category: 'Other', type: 'aggregator' },
+    { match: 'myworkdayjobs.com', name: 'Workday', category: 'Career', type: 'employer' },
+    { match: 'myworkday.com', name: 'Workday', category: 'Career', type: 'employer' },
+    { match: 'greenhouse.io', name: 'Greenhouse', category: 'Career', type: 'employer' },
+    { match: 'lever.co', name: 'Lever', category: 'Career', type: 'employer' },
+    { match: 'smartrecruiters.com', name: 'SmartRecruiters', category: 'Career', type: 'employer' },
+    { match: 'ashbyhq.com', name: 'Ashby', category: 'Career', type: 'employer' },
+    { match: 'rippling.com', name: 'Rippling', category: 'Career', type: 'employer' },
+    { match: 'icims.com', name: 'iCIMS', category: 'Career', type: 'employer' },
+    { match: 'bamboohr.com', name: 'BambooHR', category: 'Career', type: 'employer' },
+    { match: 'jobvite.com', name: 'Jobvite', category: 'Career', type: 'employer' },
+    { match: 'taleo.net', name: 'Taleo', category: 'Career', type: 'employer' },
+    { match: 'breezy.hr', name: 'Breezy', category: 'Career', type: 'employer' },
+    { match: 'workable.com', name: 'Workable', category: 'Career', type: 'employer' },
+  ];
   function capitalize(str) {
     if (!str) return '';
     return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
@@ -686,6 +1051,53 @@ if (typeof module !== 'undefined' && module.exports) {
         m = path.match(/\/p\/([a-z0-9]+)/i);
         if (m) return { jobId: 'bz_' + m[1], rawJobId: m[1], platform: 'Breezy', siteType: 'employer' };
       }
+      // ─── v3 new platforms ───
+      if (host.includes('glassdoor.co') || host.includes('glassdoor.com')) {
+        m = full.match(/[?&]jl=(\d+)/);
+        if (m) return { jobId: 'gd_' + m[1], rawJobId: m[1], platform: 'Glassdoor', siteType: 'aggregator' };
+        m = path.match(/-JV(\d+)/);
+        if (m) return { jobId: 'gd_' + m[1], rawJobId: m[1], platform: 'Glassdoor', siteType: 'aggregator' };
+      }
+      if (host.includes('naukri.com')) {
+        const nkId = u.searchParams.get('jobId');
+        if (nkId) return { jobId: 'nk_' + nkId, rawJobId: nkId, platform: 'Naukri', siteType: 'aggregator' };
+      }
+      if (host.includes('internshala.com')) {
+        m = path.match(/\/(?:internship|job)\/detail\/[^\/]+-(\d+)/);
+        if (m) return { jobId: 'is_' + m[1], rawJobId: m[1], platform: 'Internshala', siteType: 'aggregator' };
+      }
+      if (host.includes('unstop.com')) {
+        m = path.match(/\/opportunity\/[^\/]+-(\d+)/);
+        if (m) return { jobId: 'un_' + m[1], rawJobId: m[1], platform: 'Unstop', siteType: 'aggregator' };
+      }
+      if (host.includes('cutshort.io')) {
+        m = path.match(/\/jobs\/[^\/]+\/([a-zA-Z0-9_-]{6,})/);
+        if (m) return { jobId: 'cs_' + m[1], rawJobId: m[1], platform: 'Cutshort', siteType: 'employer' };
+      }
+      if (host.includes('hirist.tech')) {
+        m = path.match(/-(\d{5,})$/);
+        if (m) return { jobId: 'hi_' + m[1], rawJobId: m[1], platform: 'Hirist', siteType: 'aggregator' };
+      }
+      if (host.includes('instahyre.com')) {
+        m = path.match(/\/job\/[^\/]+-([a-z0-9]{8,})/);
+        if (m) return { jobId: 'ih_' + m[1], rawJobId: m[1], platform: 'Instahyre', siteType: 'aggregator' };
+      }
+      if (host.includes('foundit.in')) {
+        m = path.match(/-(\d{7,})\.html/);
+        if (m) return { jobId: 'fi_' + m[1], rawJobId: m[1], platform: 'Foundit', siteType: 'aggregator' };
+      }
+      if (host.includes('simplyhired.co.in')) {
+        m = path.match(/\/job\/[^\/]+-([a-z0-9\-]{8,})\//i);
+        if (m) return { jobId: 'sh_' + m[1], rawJobId: m[1], platform: 'SimplyHired', siteType: 'aggregator' };
+      }
+      if (host.includes('workatastartup.com')) {
+        m = path.match(/\/jobs\/(\d+)/);
+        if (m) return { jobId: 'was_' + m[1], rawJobId: m[1], platform: 'WorkAtStartup', siteType: 'aggregator' };
+      }
+      if (host.includes('uplers.com')) {
+        m = path.match(/\/job\/[^\/]+-(\d+)/);
+        if (m) return { jobId: 'up_' + m[1], rawJobId: m[1], platform: 'Uplers', siteType: 'aggregator' };
+      }
       m = full.match(/([a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12})/i);
       if (m) return { jobId: 'xx_' + m[1], rawJobId: m[1], platform: 'Other', siteType: 'employer' };
       m = path.match(/[\/\-_](\d{5,10})(?:[\/\?&]|$)/);
@@ -704,7 +1116,80 @@ if (typeof module !== 'undefined' && module.exports) {
     } catch { /* ignore */ }
     return 'Direct';
   }
-  module.exports = { parseWorkdayUrl, extractJobId, normalizeUrl, detectSource, extractJDKeywords: function(text) {
+  function getPlatformInfo(hostname, pathname) {
+    pathname = pathname || '';
+    for (const p of PLATFORM_MAP) {
+      if (hostname.includes(p.match)) {
+        return { platform: p.name, platformCategory: p.category, siteType: p.type };
+      }
+    }
+    if (hostname.startsWith('careers.') || hostname.includes('.careers.') || pathname.includes('/careers') || pathname.includes('/jobs') || pathname.includes('/work-with-us') || pathname.includes('/join-us') || pathname.includes('/openings')) {
+      return { platform: 'Career Page', platformCategory: 'Career', siteType: 'employer' };
+    }
+    return { platform: 'Other', platformCategory: 'Other', siteType: 'employer' };
+  }
+  function detectJobType(roleText, jdText) {
+    const role = (roleText || '').toLowerCase();
+    const jd = (jdText || '').toLowerCase();
+    if (/\bintern\b|_intern\b|-intern\b|\binternship\b|\btrainee\b|\bapprentice\b/i.test(role)) return 'Internship';
+    if (/\bcontract\b|\bcontractor\b|\bconsultant\b|\bfreelance\b|\btemp\b|\btemporary\b/i.test(role)) return 'Contract';
+    if (/\binternship\b|\bintern position\b|\bintern role\b|\bstipend\b|\bduration:\s*\d+\s*months?\b|\bcollege students\b|\bfinal year\b|\bundergraduate\b|\bpursuing b\.?tech\b|\bpursuing degree\b/i.test(jd)) return 'Internship';
+    if (/\bcontract role\b|\bcontractual\b|\bfixed term\b|\b\d+-month contract\b|\bcontract to hire\b|\bc2h\b|\bthird party payroll\b/i.test(jd)) return 'Contract';
+    if (/\bpart[- ]?time\b|\b20 hours\b|\bweekends only\b/i.test(jd)) return 'Part-time';
+    if (/\bsde\b|\bswe\b|\bengineer\b|\bdeveloper\b|\banalyst\b|\bassociate\b|\bmanager\b|\blead\b|\barchitect\b/i.test(role)) return 'Full-time';
+    if (jd.length > 100) return 'Full-time';
+    return 'Unknown';
+  }
+  function detectWorkMode(jdText) {
+    const jd = (jdText || '').toLowerCase();
+    if (!jd || jd.length < 30) return 'Unknown';
+    if (/\bfully remote\b|\b100% remote\b|\bremote[- ]?first\b|\bdistributed team\b|\banywhere in india\b/i.test(jd)) return 'Remote';
+    if (/\bwork from home\b|\bwfh\b/i.test(jd)) return 'Remote';
+    if (/\bhybrid\b|\b[23] days? office\b|\bpartial remote\b|\bflexible work\b|\bhybrid model\b|\bwork from office\s*\/\s*home\b/i.test(jd)) return 'Hybrid';
+    if (/\bon[- ]?site\b|\bonsite\b|\bin[- ]?office\b|\boffice only\b|\bwork from office\b|\bno remote\b|\bmust relocate\b/i.test(jd)) return 'On-site';
+    if (/\bremote\b/i.test(jd) && !/\bno remote\b|\bnot remote\b/i.test(jd)) return 'Remote';
+    return 'Unknown';
+  }
+  function extractStipend(jdText) {
+    if (!jdText) return '';
+    const m = jdText.match(/(?:stipend|salary|ctc|compensation)[:\s]+([₹$]?[\d,]+(?:\s*[-–]\s*[\d,]+)?(?:\s*(?:lpa|\/month|per month|k\/month|k))?)/i);
+    if (m) return m[1].trim();
+    const m2 = jdText.match(/(?:₹|INR|Rs\.?)\s*[\d,]+(?:\s*[-–]\s*[\d,]+)?(?:\s*(?:lpa|\/month|per month))?/i);
+    if (m2) return m2[0].trim();
+    return '';
+  }
+  function extractDuration(jdText) {
+    if (!jdText) return '';
+    const m = jdText.match(/duration[:\s]+(\d+\s*(?:months?|weeks?|years?))/i);
+    if (m) return m[1].trim();
+    const m2 = jdText.match(/(\d+)[- ](?:month|week|year)\s+(?:internship|contract|program)/i);
+    if (m2) return m2[1].trim() + ' month';
+    return '';
+  }
+  const REQ_LABELS = [
+    'job id', 'job_id', 'job-id', 'jobid',
+    'requisition id', 'requisition_id', 'req id', 'req_id', 'req-id', 'reqid',
+    'req no', 'req no.', 'req number', 'requisition no', 'requisition number',
+    'reference id', 'ref id', 'ref_id', 'ref code', 'refcode', 'ref no',
+    'vacancy code', 'vacancy id', 'vacancy no',
+    'job number', 'job no', 'job no.',
+    'position id', 'position no', 'position number',
+    'opening id', 'opening no',
+    'job code', 'job ref',
+    'posting id', 'posting number',
+    'application id',
+  ];
+  function extractRequisitionId(pageText) {
+    if (!pageText) return null;
+    for (const label of REQ_LABELS) {
+      const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const re = new RegExp(escaped + '[:\\s#\\-]+([A-Z0-9][A-Z0-9\\-_/]{2,24})', 'i');
+      const m = pageText.match(re);
+      if (m) return m[1].trim();
+    }
+    return null;
+  }
+  function extractJDKeywords(text) {
     const SKILL_CATEGORIES = {
       languages:['python','java','javascript','typescript','c++','c#','golang','rust','kotlin','swift','ruby','php','scala','r','bash','sql','html','css','dart','matlab'],
       frameworks:['react','angular','vue','node.js','express','django','flask','fastapi','spring boot','spring','laravel','next.js','nuxt','svelte','redux','graphql','rest','restful','tailwind'],
@@ -738,5 +1223,6 @@ if (typeof module !== 'undefined' && module.exports) {
     else if (lower.includes('lead') || lower.includes('staff')) level = 'Lead/Staff';
     else if (lower.includes('intern') || lower.includes('fresher') || lower.includes('entry')) level = 'Entry/Intern';
     return { byCategory: found, mustHave: [...new Set(mustHave)], niceToHave: [...new Set(niceToHave)], experienceLevel: level, yearsRequired: [...new Set(yearMatches)] };
-  }};
+  }
+  module.exports = { parseWorkdayUrl, extractJobId, normalizeUrl, detectSource, extractJDKeywords, detectJobType, detectWorkMode, extractStipend, extractDuration, extractRequisitionId, getPlatformInfo };
 }
