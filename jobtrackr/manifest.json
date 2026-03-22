@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "JobTrackr",
-  "version": "3.0.0",
-  "description": "Track job applications across any ATS — Workday, Greenhouse, Lever, LinkedIn, Indeed, Naukri, Internshala, and 20+ more. One-click logging with auto-fill, dedup detection, JD keyword extraction, job type/work mode detection, and smart referral messages.",
+  "version": "4.0.0",
+  "description": "Track job applications across 25+ ATS platforms. One-click logging, auto-fill, dedup detection, JD preview with keyword extraction, AI prompt generation, follow-up reminders, customizable templates, snippet pills, and a full Settings Hub — all in chrome.storage with zero hardcoded content.",
   "permissions": [
     "storage",
     "activeTab",

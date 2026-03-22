@@ -25,18 +25,16 @@
       </div>
     </header>
 
-    <!-- Auto-fill Failed Banner -->
-    <div id="autofill-failed" class="info-banner banner-yellow hidden">
-      ⚠️ Auto-fill failed — enter details manually. URL has been pre-filled.
+    <!-- 1. Weekly Recap Banner (Mondays only) -->
+    <div id="weekly-banner" class="info-banner banner-blue hidden">
+      <span id="weekly-banner-text">📊 Last week: 0 applied · 0 interviewing · 0 follow-ups due</span>
+      <div style="display:flex;gap:4px;margin-top:4px;">
+        <a href="#" id="weekly-banner-dash" class="banner-link">View in dashboard</a>
+        <button id="weekly-banner-dismiss" class="btn btn-xs btn-ghost">Dismiss</button>
+      </div>
     </div>
 
-    <!-- Aggregator Hint -->
-    <div id="aggregator-hint" class="info-banner banner-blue hidden">
-      <span id="aggregator-text">ℹ️ Job ID not available on this platform. Visit the company careers page for the real Job ID.</span>
-      <a id="aggregator-link" href="#" target="_blank" class="banner-link hidden">Open on company site →</a>
-    </div>
-
-    <!-- Duplicate / Re-post Banner -->
+    <!-- 2. Duplicate / Re-post Banner -->
     <div id="dup-banner" class="dup-banner hidden">
       <div class="dup-content">
         <div class="dup-icon" id="dup-emoji">⚠️</div>
@@ -51,6 +49,17 @@
       </div>
     </div>
 
+    <!-- 3. Aggregator Hint -->
+    <div id="aggregator-hint" class="info-banner banner-blue hidden">
+      <span id="aggregator-text">ℹ️ Job ID not available on this platform. Visit the company careers page for the real Job ID.</span>
+      <a id="aggregator-link" href="#" target="_blank" class="banner-link hidden">Open on company site →</a>
+    </div>
+
+    <!-- Auto-fill Failed Banner -->
+    <div id="autofill-failed" class="info-banner banner-yellow hidden">
+      ⚠️ Auto-fill failed — enter details manually. URL has been pre-filled.
+    </div>
+
     <!-- Soft Warning (fuzzy) -->
     <div id="soft-warning" class="soft-warning hidden">
       <p id="soft-warning-text"></p>
@@ -63,18 +72,20 @@
       <div class="quick-pills" id="quick-status-pills"></div>
     </div>
 
-    <!-- Job Details Section -->
+    <!-- 4. Scrape Quality -->
+    <section class="form-section scrape-quality-section" id="scrape-quality-section">
+      <div class="platform-badge-wrap">
+        <span id="platform-category-badge" class="platform-category-badge" data-category="Other">—</span>
+        <span id="platform-badge" class="platform-badge" data-platform="Other">—</span>
+        <span id="scrape-indicator" class="scrape-dot" title="Scrape quality"></span>
+      </div>
+    </section>
+
+    <!-- 5-12. Job Details Section -->
     <section class="form-section">
-      <div class="field-row">
-        <div class="field flex-1">
-          <label for="input-role">Role</label>
-          <input type="text" id="input-role" placeholder="e.g. Software Engineer" maxlength="200">
-        </div>
-        <div class="platform-badge-wrap">
-          <span id="platform-category-badge" class="platform-category-badge" data-category="Other">—</span>
-          <span id="platform-badge" class="platform-badge" data-platform="Other">—</span>
-          <span id="scrape-indicator" class="scrape-dot" title="Scrape quality"></span>
-        </div>
+      <div class="field">
+        <label for="input-role">Role</label>
+        <input type="text" id="input-role" placeholder="e.g. Software Engineer" maxlength="200">
       </div>
 
       <div class="field">
@@ -90,17 +101,6 @@
         <div class="field flex-1">
           <label for="input-source">Source</label>
           <input type="text" id="input-source" placeholder="e.g. LinkedIn" maxlength="100">
-        </div>
-      </div>
-
-      <div class="field-row-2">
-        <div class="field flex-1">
-          <label for="input-jobid">Job ID</label>
-          <input type="text" id="input-jobid" placeholder="e.g. REQ571718" maxlength="100" class="mono">
-        </div>
-        <div class="field flex-1">
-          <label for="input-url">Job URL</label>
-          <input type="url" id="input-url" placeholder="https://..." maxlength="2000">
         </div>
       </div>
 
@@ -136,9 +136,20 @@
           <input type="text" id="input-duration" placeholder="e.g. 6 months" maxlength="100">
         </div>
       </div>
+
+      <div class="field-row-2">
+        <div class="field flex-1">
+          <label for="input-jobid">Job ID</label>
+          <input type="text" id="input-jobid" placeholder="e.g. REQ571718" maxlength="100" class="mono">
+        </div>
+        <div class="field flex-1">
+          <label for="input-url">Job URL</label>
+          <input type="url" id="input-url" placeholder="https://..." maxlength="2000">
+        </div>
+      </div>
     </section>
 
-    <!-- Email Selector -->
+    <!-- 13. Email Selector -->
     <section class="form-section">
       <label class="section-label">Apply with</label>
       <div class="pill-group email-pills" id="email-pills">
@@ -153,7 +164,7 @@
       </div>
     </section>
 
-    <!-- Status Selector -->
+    <!-- 14. Status Selector -->
     <section class="form-section">
       <label class="section-label">Status</label>
       <div class="pill-group status-pills" id="status-pills">
@@ -165,9 +176,27 @@
         <button class="pill pill-status" data-value="Offer">Offer</button>
         <button class="pill pill-status" data-value="Withdrawn">Withdrawn</button>
       </div>
+      <!-- Status note prompt (shown on certain status changes) -->
+      <div id="status-note-prompt" class="status-note-prompt hidden">
+        <label id="status-note-label"></label>
+        <input type="text" id="status-note-input" placeholder="Type here..." maxlength="200">
+      </div>
     </section>
 
-    <!-- Referral Section -->
+    <!-- 15. Follow-up Date (conditional: Applied / Referral Pending) -->
+    <section class="form-section" id="followup-section">
+      <div class="field-row-2">
+        <div class="field flex-1">
+          <label for="input-followup-date">Follow up on</label>
+          <input type="date" id="input-followup-date">
+        </div>
+        <div class="field flex-1" style="display:flex;align-items:flex-end;">
+          <span id="followup-hint" class="toggle-hint" style="font-size:11px;color:var(--text-muted)"></span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 16. Referral Section -->
     <section class="form-section referral-section" id="referral-section">
       <div class="toggle-row">
         <label class="toggle-label"><span>Seeking referral</span></label>
@@ -181,7 +210,14 @@
       </div>
     </section>
 
-    <!-- JD Insights Panel (collapsed by default) -->
+    <!-- 17-18. Notes Section with Snippets -->
+    <section class="form-section">
+      <label class="section-label">Notes</label>
+      <div class="snippet-pills" id="snippet-pills"></div>
+      <textarea id="input-notes" placeholder="Quick note (optional)" maxlength="500" rows="1"></textarea>
+    </section>
+
+    <!-- 19. JD Insights Panel (collapsed by default) -->
     <section class="form-section jd-section" id="jd-section">
       <button id="jd-toggle" class="jd-toggle">
         <span>JD Insights</span>
@@ -203,22 +239,55 @@
       </div>
     </section>
 
-    <!-- Save JD Toggle -->
+    <!-- 20. Save JD Toggle + Preview Panel -->
     <section class="form-section" id="save-jd-section">
       <div class="toggle-row">
-        <label class="toggle-label"><span>Save JD text</span><span class="toggle-hint">(uses storage quota)</span></label>
+        <label class="toggle-label"><span>Save JD to entry</span><span class="toggle-hint">(uses storage quota)</span></label>
         <button id="toggle-save-jd" class="toggle" role="switch" aria-checked="false">
           <span class="toggle-slider"></span>
         </button>
       </div>
+      <!-- JD Preview Panel — shown when toggle is ON -->
+      <div id="jd-preview-panel" class="jd-preview-panel hidden">
+        <div class="jd-preview-header">
+          <span class="jd-preview-title">Scraped job description</span>
+          <span id="jd-char-count" class="jd-char-badge">0 chars</span>
+          <button id="jd-preview-edit" class="btn btn-xs btn-ghost">Edit</button>
+        </div>
+        <textarea id="jd-preview-text" class="jd-preview-textarea" readonly rows="7" maxlength="8000"></textarea>
+        <!-- Manual paste fallback (shown when scrape found nothing) -->
+        <div id="jd-manual-paste" class="jd-manual-paste hidden">
+          <label>Paste JD manually</label>
+          <textarea id="jd-manual-input" rows="5" placeholder="Paste job description here..." maxlength="8000"></textarea>
+        </div>
+        <!-- Quality indicator -->
+        <div id="jd-quality" class="jd-quality-indicator">
+          <span id="jd-quality-dot" class="scrape-dot"></span>
+          <span id="jd-quality-text"></span>
+        </div>
+        <!-- Storage impact -->
+        <div id="jd-storage-impact" class="jd-storage-impact"></div>
+      </div>
     </section>
 
-    <!-- Notes -->
-    <section class="form-section">
-      <textarea id="input-notes" placeholder="Quick note (optional)" maxlength="500" rows="1"></textarea>
+    <!-- 21. AI Prompts Section (collapsed) -->
+    <section class="form-section jd-section" id="ai-prompts-section">
+      <button id="ai-prompts-toggle" class="jd-toggle">
+        <span>AI Prompts</span>
+        <span class="jd-chevron" id="ai-chevron">▸</span>
+      </button>
+      <div id="ai-prompts-panel" class="jd-panel hidden">
+        <div class="ai-prompt-grid">
+          <button id="btn-ai-cover-letter" class="btn btn-outline btn-sm ai-btn" title="Generate cover letter prompt">📝 Cover letter</button>
+          <button id="btn-ai-resume" class="btn btn-outline btn-sm ai-btn" title="Generate resume tailoring prompt">📄 Resume tips</button>
+          <button id="btn-ai-interview" class="btn btn-outline btn-sm ai-btn" title="Generate interview prep prompt">🎤 Interview prep</button>
+          <button id="btn-ai-referral" class="btn btn-outline btn-sm ai-btn" title="Generate referral message">🤝 Referral msg</button>
+        </div>
+        <div id="ai-toast" class="ai-toast hidden"></div>
+      </div>
     </section>
 
-    <!-- Log Button -->
+    <!-- 22. Log Application Button -->
     <button id="btn-log" class="btn btn-primary btn-block btn-log">
       <span id="btn-log-text">Log Application</span>
       <span id="btn-log-spinner" class="spinner hidden"></span>
@@ -235,13 +304,13 @@
     </div>
   </div>
 
-  <!-- ═══ Settings Panel ═══ -->
+  <!-- ═══ Settings Panel (Quick Settings) ═══ -->
   <div id="settings-panel" class="settings-panel hidden">
     <header class="header">
       <button id="btn-back" class="icon-btn" title="Back" aria-label="Back">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
       </button>
-      <h1 class="header-title">Settings</h1>
+      <h1 class="header-title">Quick Settings</h1>
       <div style="width:36px"></div>
     </header>
     <div class="settings-body">
@@ -260,17 +329,15 @@
         <div class="field-inline"><label>Default Email</label><select id="set-default-email"><option value="A">Email A</option><option value="B">Email B</option></select></div>
         <div class="field-inline"><label>Default Status</label><select id="set-default-status"><option value="Applied">Applied</option><option value="Referral Pending">Referral Pending</option><option value="Re-applied (Referral)">Re-applied</option><option value="Interviewing">Interviewing</option></select></div>
         <div class="field-inline"><label>Weekly Goal</label><input type="number" id="set-weekly-goal" min="1" max="100" value="5"></div>
-        <div class="field-inline"><label>Save JD by default</label><input type="checkbox" id="set-save-jd"></div>
       </div>
       <div class="settings-group">
-        <h3>Data</h3>
-        <button id="btn-export-csv" class="btn btn-outline btn-block">📥 Export all as CSV</button>
-        <button id="btn-clear-data" class="btn btn-danger btn-block">🗑️ Clear all data</button>
+        <a href="#" id="btn-open-settings-hub" class="btn btn-outline btn-block" style="text-decoration:none;text-align:center;">⚙️ Open full Settings Hub →</a>
       </div>
       <button id="btn-save-settings" class="btn btn-primary btn-block">Save Settings</button>
     </div>
   </div>
 
+  <script src="templates.js"></script>
   <script src="storage.js"></script>
   <script src="popup.js"></script>
 </body>

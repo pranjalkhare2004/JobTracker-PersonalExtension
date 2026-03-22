@@ -1,17 +1,11 @@
 /* ═══════════════════════════════════════
-   popup.js — Popup Logic V2
-   Auto-fill, dedup, JD insights, smart referral, MY_SKILLS
+   popup.js — Popup Logic V4
+   Auto-fill, dedup, JD preview, AI prompts,
+   snippets, follow-up, weekly banner, templates
    ═══════════════════════════════════════ */
 
 (function () {
   'use strict';
-
-  /* ─── MY SKILLS — Update this list as you learn new things ─── */
-  const MY_SKILLS = [
-    'python', 'java', 'javascript', 'typescript', 'react', 'node.js', 'express',
-    'sql', 'git', 'github', 'linux', 'c++', 'html', 'css', 'mongodb',
-    'rest', 'restful', 'data structures', 'algorithms',
-  ];
 
   /* ─── State ─── */
   let settings = {};
@@ -22,6 +16,10 @@
   let referralOn = false;
   let keywordsData = null;
   let saveJDOn = false;
+  let jdText = '';           // raw JD text from scraper
+  let jdEditMode = false;
+  let snippetsList = [];
+  let mySkills = [];         // loaded from storage — NEVER hardcoded
 
   /* ─── DOM Refs ─── */
   const $ = id => document.getElementById(id);
@@ -39,6 +37,8 @@
   const inputStipend = $('input-stipend');
   const inputDuration = $('input-duration');
   const conditionalFields = $('conditional-fields');
+  const inputFollowupDate = $('input-followup-date');
+  const followupSection = $('followup-section');
 
   const platformBadge = $('platform-badge');
   const platformCategoryBadge = $('platform-category-badge');
@@ -88,14 +88,21 @@
   const toggleReferral = $('toggle-referral');
   const referralFields = $('referral-fields');
 
+  const snippetPills = $('snippet-pills');
+
   /* ═══════════════════════════════
      Init
      ═══════════════════════════════ */
 
   async function init() {
     settings = await getSettings();
+    mySkills = settings.mySkills || [];
+    snippetsList = await getSnippets();
     applySettings();
     wireEvents();
+    renderSnippetPills();
+    checkWeeklyBanner();
+    updateFollowupVisibility();
     await fetchJobData();
   }
 
@@ -111,6 +118,17 @@
     updateEmailPills();
     updateStatusPills();
 
+    // Default follow-up date
+    const d = new Date();
+    d.setDate(d.getDate() + (settings.followUpDefaultDays || 7));
+    inputFollowupDate.value = d.toISOString().split('T')[0];
+    const followupHint = $('followup-hint');
+    if (followupHint) followupHint.textContent = `Default: ${settings.followUpDefaultDays || 7} days`;
+
+    // Save JD toggle
+    saveJDOn = settings.saveJD || false;
+    $('toggle-save-jd').setAttribute('aria-checked', saveJDOn);
+
     // Settings form
     $('set-label-a').value = settings.labelA || '';
     $('set-email-a').value = settings.emailA || '';
@@ -119,9 +137,59 @@
     $('set-default-email').value = settings.defaultEmail || 'A';
     $('set-default-status').value = settings.defaultStatus || 'Applied';
     $('set-weekly-goal').value = settings.weeklyGoal || 5;
-    $('set-save-jd').checked = settings.saveJD || false;
-    saveJDOn = settings.saveJD || false;
-    $('toggle-save-jd').setAttribute('aria-checked', saveJDOn);
+  }
+
+  /* ═══════════════════════════════
+     Weekly Banner (Mondays only)
+     ═══════════════════════════════ */
+
+  async function checkWeeklyBanner() {
+    const now = new Date();
+    if (now.getDay() !== 1) return; // Monday only
+
+    const lastDismiss = settings.lastWeeklyDismiss || '';
+    const thisMonday = new Date(now);
+    thisMonday.setHours(0, 0, 0, 0);
+    if (lastDismiss && new Date(lastDismiss) >= thisMonday) return;
+
+    try {
+      const apps = await getAllApplications();
+      const lastWeekStart = new Date(thisMonday);
+      lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+      const lastWeekApps = apps.filter(a => {
+        const d = new Date(a.dateApplied);
+        return d >= lastWeekStart && d < thisMonday;
+      });
+
+      const applied = lastWeekApps.length;
+      const interviewing = lastWeekApps.filter(a => a.status === 'Interviewing').length;
+      const today = now.toISOString().split('T')[0];
+      const followUpsDue = apps.filter(a => a.followUpDate && !a.followUpDone && a.followUpDate <= today).length;
+
+      $('weekly-banner-text').textContent = `📊 Last week: ${applied} applied · ${interviewing} interviewing · ${followUpsDue} follow-ups due`;
+      $('weekly-banner').classList.remove('hidden');
+    } catch { /* silently skip */ }
+  }
+
+  /* ═══════════════════════════════
+     Snippet Pills
+     ═══════════════════════════════ */
+
+  function renderSnippetPills() {
+    if (!snippetPills || snippetsList.length === 0) return;
+    snippetPills.innerHTML = snippetsList.map(s =>
+      `<button class="pill btn-xs snippet-pill" title="Add to notes">${esc(s)}</button>`
+    ).join('');
+  }
+
+  /* ═══════════════════════════════
+     Follow-up Visibility
+     ═══════════════════════════════ */
+
+  function updateFollowupVisibility() {
+    if (!followupSection) return;
+    const show = selectedStatus === 'Applied' || selectedStatus === 'Referral Pending';
+    followupSection.classList.toggle('hidden', !show);
   }
 
   /* ═══════════════════════════════
@@ -129,13 +197,11 @@
      ═══════════════════════════════ */
 
   async function fetchJobData() {
-    // Always pre-fill URL
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (tab?.url) inputUrl.value = tab.url;
     } catch { /* ignore */ }
 
-    // Try content script with 400ms timeout
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) { showAutoFillFailed(); return; }
@@ -178,22 +244,19 @@
     scrapeIndicator.dataset.quality = data.scrapeQuality || 'failed';
     scrapeIndicator.title = `Scrape: ${data.scrapeQuality || 'failed'}`;
 
-    // Job type and work mode
     if (data.jobType && data.jobType !== 'Unknown') inputJobType.value = data.jobType;
     if (data.workMode && data.workMode !== 'Unknown') inputWorkMode.value = data.workMode;
     updateConditionalFields();
 
-    // Stipend & duration
     if (data.stipend) inputStipend.value = data.stipend;
     if (data.duration) inputDuration.value = data.duration;
 
-    // Show aggregator hint
     if (data.siteType === 'aggregator') {
       aggregatorHint.classList.remove('hidden');
       aggregatorText.textContent = `ℹ️ Job ID not available on ${data.platform}. Visit the company careers page for the real Job ID.`;
     }
 
-    // Keyword data
+    // Keywords
     if (data.keywords && (data.keywords.mustHave?.length > 0 || data.keywords.niceToHave?.length > 0)) {
       keywordsData = data.keywords;
       renderJDInsights();
@@ -201,17 +264,16 @@
       jdSection.classList.add('hidden');
     }
 
-    // Check for duplicates
+    // JD text for preview
+    jdText = data.jobDescription || '';
+    if (saveJDOn) showJDPreview();
+
     checkForDuplicates();
   }
 
   function updateConditionalFields() {
     const jt = inputJobType.value;
-    if (jt === 'Internship' || jt === 'Contract') {
-      conditionalFields.classList.remove('hidden');
-    } else {
-      conditionalFields.classList.add('hidden');
-    }
+    conditionalFields.classList.toggle('hidden', jt !== 'Internship' && jt !== 'Contract');
   }
 
   /* ═══════════════════════════════
@@ -226,34 +288,211 @@
     const nice = keywordsData.niceToHave || [];
     const total = must.length + nice.length;
 
-    // Match score
-    const myMatches = must.filter(k => MY_SKILLS.some(s => s.toLowerCase() === k.toLowerCase()));
+    // Match score (uses mySkills from storage)
+    const myMatches = must.filter(k => mySkills.some(s => s.toLowerCase() === k.toLowerCase()));
     const matchCount = myMatches.length;
     const matchTotal = must.length;
     const matchPct = matchTotal > 0 ? Math.round((matchCount / matchTotal) * 100) : 0;
 
     jdSummary.textContent = `${total} keywords  •  Match: ${matchCount}/${matchTotal}`;
 
-    // Must have pills
     jdMustPills.innerHTML = must.map(s => {
-      const isMatch = MY_SKILLS.some(ms => ms.toLowerCase() === s.toLowerCase());
+      const isMatch = mySkills.some(ms => ms.toLowerCase() === s.toLowerCase());
       return `<span class="skill-pill ${isMatch ? 'skill-pill-match' : 'skill-pill-miss'}">${esc(s)}</span>`;
     }).join('');
 
-    // Nice to have pills
     jdNicePills.innerHTML = nice.map(s => `<span class="skill-pill skill-pill-nice">${esc(s)}</span>`).join('');
     if (nice.length === 0) $('jd-nice-have').classList.add('hidden');
 
-    // Match bar
     jdMatch.innerHTML = `${matchCount}/${matchTotal} required skills
       <span class="jd-match-bar jd-match-bar-bg">
         <span class="jd-match-bar-fill" style="width:${matchPct}%"></span>
       </span> ${matchPct}%`;
 
-    // Level
     const lvl = keywordsData.experienceLevel || '';
     const yrs = keywordsData.yearsRequired?.join(', ') || '';
     jdLevel.textContent = [lvl, yrs].filter(Boolean).join('  •  ');
+  }
+
+  /* ═══════════════════════════════
+     JD Preview Panel
+     ═══════════════════════════════ */
+
+  function showJDPreview() {
+    const panel = $('jd-preview-panel');
+    const textarea = $('jd-preview-text');
+    const charCount = $('jd-char-count');
+    const manualPaste = $('jd-manual-paste');
+
+    panel.classList.remove('hidden');
+
+    if (jdText && jdText.length > 0) {
+      textarea.value = jdText;
+      textarea.classList.remove('hidden');
+      manualPaste.classList.add('hidden');
+    } else {
+      textarea.value = '';
+      textarea.classList.add('hidden');
+      manualPaste.classList.remove('hidden');
+    }
+
+    updateJDCharCount();
+    updateJDQuality();
+    updateJDStorageImpact();
+  }
+
+  function hideJDPreview() {
+    const panel = $('jd-preview-panel');
+    panel.classList.add('hidden');
+  }
+
+  function updateJDCharCount() {
+    const text = getActiveJDText();
+    $('jd-char-count').textContent = `${text.length.toLocaleString()} chars`;
+  }
+
+  function updateJDQuality() {
+    const text = getActiveJDText();
+    const dot = $('jd-quality-dot');
+    const label = $('jd-quality-text');
+
+    if (!text || text.length < 50) {
+      dot.dataset.quality = 'failed';
+      label.textContent = 'Poor scrape — mostly nav/boilerplate detected';
+      return;
+    }
+
+    // Quick keyword count from the text
+    const lower = text.toLowerCase();
+    const techWords = ['python','java','javascript','react','node','sql','docker','aws','api','rest','git','database','agile','kubernetes'];
+    const found = techWords.filter(w => lower.includes(w)).length;
+
+    if (found >= 3) {
+      dot.dataset.quality = 'full';
+      label.textContent = 'Looks good — role and requirements detected';
+    } else if (found >= 1) {
+      dot.dataset.quality = 'partial';
+      label.textContent = 'Partial — limited requirements found';
+    } else {
+      dot.dataset.quality = 'failed';
+      label.textContent = 'Poor scrape — mostly nav/boilerplate detected';
+    }
+  }
+
+  async function updateJDStorageImpact() {
+    const el = $('jd-storage-impact');
+    if (!el) return;
+    const text = getActiveJDText();
+    const kb = Math.ceil(text.length / 1024);
+    try {
+      const usage = await getStorageUsage();
+      const pct = Math.round((usage.total / usage.limit) * 100);
+      el.textContent = `Saving JD uses ~${kb} KB of your 100 KB storage budget (currently ${pct}% used)`;
+    } catch {
+      el.textContent = `Saving JD uses ~${kb} KB of your 100 KB storage budget`;
+    }
+  }
+
+  function getActiveJDText() {
+    const manualInput = $('jd-manual-input');
+    const previewText = $('jd-preview-text');
+    if (manualInput && !manualInput.closest('.hidden') && manualInput.value.trim()) {
+      return manualInput.value.trim();
+    }
+    return previewText ? previewText.value.trim() : '';
+  }
+
+  /* ═══════════════════════════════
+     AI Prompts
+     ═══════════════════════════════ */
+
+  function buildCurrentEntry() {
+    return {
+      role: inputRole.value.trim(),
+      company: inputCompany.value.trim(),
+      rawJobId: inputJobId.value.trim(),
+      jobId: scrapedData?.jobId || null,
+      location: inputLocation.value.trim(),
+      jobType: inputJobType.value || 'Unknown',
+      source: inputSource.value.trim() || 'Direct',
+      jobUrl: inputUrl.value.trim(),
+      dateApplied: new Date().toISOString(),
+      keywords: keywordsData || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] },
+      referralPerson: inputReferralPerson.value.trim(),
+      stipend: inputStipend.value.trim(),
+      workMode: inputWorkMode.value || 'Unknown',
+    };
+  }
+
+  async function handleAIPrompt(templateKey) {
+    const toast = $('ai-toast');
+    try {
+      const templates = await getTemplates();
+      const template = templates[templateKey];
+      if (!template) { showAIToast('Template not found', 'error'); return; }
+
+      const entry = buildCurrentEntry();
+      const data = await buildTemplateData(entry);
+      const rendered = renderTemplate(template, data);
+
+      await navigator.clipboard.writeText(rendered);
+
+      // Check if cover letter base is still default
+      if (templateKey === 'coverLetterPrompt' && templates.coverLetterBase &&
+          templates.coverLetterBase.includes('[Paste your own cover letter')) {
+        showAIToast('⚠️ Copied! Add your cover letter in Settings Hub → Templates first', 'warn');
+      } else {
+        showAIToast('✓ Copied! Paste into ChatGPT →', 'success');
+      }
+    } catch (e) {
+      console.error('AI prompt failed:', e);
+      showAIToast('Failed to generate prompt', 'error');
+    }
+  }
+
+  function showAIToast(msg, type) {
+    const toast = $('ai-toast');
+    toast.textContent = msg;
+    toast.className = 'ai-toast ' + (type || '');
+    toast.classList.remove('hidden');
+    setTimeout(() => toast.classList.add('hidden'), 3000);
+  }
+
+  /* ═══════════════════════════════
+     Status Note Prompts
+     ═══════════════════════════════ */
+
+  async function checkStatusNotePrompt(status) {
+    const templates = await getTemplates();
+    const prompts = templates.statusNotePrompts || {};
+    const notePromptEl = $('status-note-prompt');
+    const noteLabel = $('status-note-label');
+    const noteInput = $('status-note-input');
+
+    if (prompts[status]) {
+      noteLabel.textContent = prompts[status];
+      noteInput.value = '';
+      notePromptEl.classList.remove('hidden');
+      noteInput.focus();
+    } else {
+      notePromptEl.classList.add('hidden');
+    }
+  }
+
+  function appendStatusNote(status) {
+    const noteInput = $('status-note-input');
+    const notePromptEl = $('status-note-prompt');
+    if (!noteInput || !noteInput.value.trim()) {
+      notePromptEl.classList.add('hidden');
+      return;
+    }
+
+    const dateStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+    const noteEntry = `[${dateStr}] → ${status}: ${noteInput.value.trim()}`;
+    const current = inputNotes.value.trim();
+    inputNotes.value = current ? `${current}\n${noteEntry}` : noteEntry;
+    noteInput.value = '';
+    notePromptEl.classList.add('hidden');
   }
 
   /* ═══════════════════════════════
@@ -266,29 +505,25 @@
       if (apps.length === 0) return;
 
       const entry = {
-        jobId: scrapedData?.jobId || (inputJobId.value ? 'xx_' + inputJobId.value : null),
+        jobId: scrapedData?.jobId || (inputJobId.value.trim() ? 'xx_' + inputJobId.value.trim() : null),
         jobUrl: inputUrl.value,
         company: inputCompany.value,
         role: inputRole.value
       };
 
-      // Inline check (reusing dedup logic)
       const normUrl = _normUrl(entry.jobUrl);
       let result = null;
 
-      // Tier 1: Job ID
       if (entry.jobId) {
         const m = apps.find(a => a.jobId && a.jobId === entry.jobId);
         if (m) { result = { type: 'exact', match: m }; }
       }
 
-      // Tier 2: URL
       if (!result && normUrl) {
         const m = apps.find(a => _normUrl(a.jobUrl) === normUrl);
         if (m) { result = { type: 'url', match: m }; }
       }
 
-      // Tier 3/4: Company+Role
       if (!result && entry.company && entry.role) {
         const nc = _normCo(entry.company), nr = _normRole(entry.role);
         if (nc && nr) {
@@ -310,7 +545,6 @@
       dupResult = result;
       showDupWarning(result);
 
-      // Also show quick-update for Tier 1/2
       if (result.type === 'exact' || result.type === 'url') {
         showQuickUpdate(result.match);
       }
@@ -356,60 +590,14 @@
   }
 
   /* ═══════════════════════════════
-     Referral Message Generator
+     Referral Message (Template-based)
      ═══════════════════════════════ */
 
-  function generateReferralMessage() {
-    const name = inputReferralPerson.value.trim() || '[Name]';
-    const role = inputRole.value.trim() || '[Role]';
-    const company = inputCompany.value.trim() || '[Company]';
-    const rawJobId = inputJobId.value.trim();
-    const jobUrl = inputUrl.value.trim();
-
-    // JOB_ID_LINE
-    let jobIdLine;
-    if (rawJobId) {
-      jobIdLine = `Job ID: ${rawJobId}`;
-    } else if (jobUrl) {
-      jobIdLine = `Role link: ${jobUrl}`;
-    } else {
-      jobIdLine = '';
-    }
-
-    // SKILLS_LINE
-    let skillsLine = '';
-    if (keywordsData && keywordsData.mustHave) {
-      const matched = keywordsData.mustHave.filter(k => MY_SKILLS.some(s => s.toLowerCase() === k.toLowerCase()));
-      if (matched.length >= 2) {
-        const top = matched.slice(0, 4).join(', ');
-        skillsLine = `I have hands-on experience with ${top}, which aligns well with this role.`;
-      }
-    }
-    if (!skillsLine) {
-      // Fallback: role-based keyword mapping
-      const r = role.toLowerCase();
-      if (/frontend|react|angular|vue|ui/i.test(r)) skillsLine = 'I have hands-on experience with React.js, frontend development, and responsive UI design.';
-      else if (/backend|node|django|api/i.test(r)) skillsLine = 'I have hands-on experience with backend development, REST APIs, and Node.js.';
-      else if (/fullstack|full.?stack/i.test(r)) skillsLine = 'I have hands-on experience with full stack development with React and Node.js.';
-      else if (/data|ml|ai|machine.?learning/i.test(r)) skillsLine = 'I have a strong foundation in data structures, algorithms, and ML fundamentals.';
-      else if (/devops|cloud|aws|gcp/i.test(r)) skillsLine = 'I have hands-on experience with cloud platforms, CI/CD, and infrastructure tooling.';
-      else if (/mobile|android|ios|flutter/i.test(r)) skillsLine = 'I have hands-on experience with mobile development and cross-platform frameworks.';
-      else if (/sde|software.?engineer/i.test(r)) skillsLine = 'I have a strong foundation in data structures, algorithms, and software engineering.';
-    }
-
-    const msg =
-      `Hi ${name},\n\n` +
-      `I came across the ${role} at ${company} and wanted to ask if you could refer me for this position.` +
-      (jobIdLine ? ` ${jobIdLine}` : '') +
-      `\n\n` +
-      `I am a final year B.Tech CSE student (2026) at VIT with a 9.32 CGPA, with a strong foundation in computer science fundamentals.` +
-      (skillsLine ? `\n${skillsLine}` : '') +
-      `\n\n` +
-      `Please find my resume here:\nhttps://drive.google.com/file/d/12lNkX8Z8fN1ecycdakI-KM1NjENnNO2z/view?usp=drive_link\n\n` +
-      `Kindly let me know if you need any additional details.\n\n` +
-      `Thanks & Regards,\nPranjal Khare`;
-
-    return msg;
+  async function generateReferralMessage() {
+    const entry = buildCurrentEntry();
+    const templates = await getTemplates();
+    const data = await buildTemplateData(entry);
+    return renderTemplate(templates.referralMessage, data);
   }
 
   /* ═══════════════════════════════
@@ -421,11 +609,19 @@
     btnLogText.classList.add('hidden');
     btnLogSpinner.classList.remove('hidden');
 
+    // Get active JD text
+    let activeJD = '';
+    if (saveJDOn) {
+      activeJD = getActiveJDText();
+      if (activeJD.length > 8000) activeJD = activeJD.substring(0, 8000) + ' [truncated]';
+    }
+
     const data = {
       jobId: scrapedData?.jobId || (inputJobId.value.trim() ? 'xx_' + inputJobId.value.trim() : null),
       rawJobId: inputJobId.value.trim() || scrapedData?.rawJobId || '',
       platform: scrapedData?.platform || 'Other',
       siteType: scrapedData?.siteType || 'employer',
+      platformCategory: scrapedData?.platformCategory || 'Other',
       company: inputCompany.value.trim(),
       role: inputRole.value.trim(),
       location: inputLocation.value.trim(),
@@ -440,9 +636,10 @@
       keywords: keywordsData || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] },
       jobType: inputJobType.value || 'Unknown',
       workMode: inputWorkMode.value || 'Unknown',
-      jobDescription: saveJDOn ? (scrapedData?.jobDescription || '') : '',
+      jobDescription: activeJD,
       stipend: inputStipend.value.trim(),
-      duration: inputDuration.value.trim()
+      duration: inputDuration.value.trim(),
+      followUpDate: inputFollowupDate?.value || '',
     };
 
     try {
@@ -472,11 +669,18 @@
   }
 
   async function handleForceSave(linkedJobId) {
+    let activeJD = '';
+    if (saveJDOn) {
+      activeJD = getActiveJDText();
+      if (activeJD.length > 8000) activeJD = activeJD.substring(0, 8000) + ' [truncated]';
+    }
+
     const data = {
       jobId: scrapedData?.jobId || (inputJobId.value.trim() ? 'xx_' + inputJobId.value.trim() : null),
       rawJobId: inputJobId.value.trim() || scrapedData?.rawJobId || '',
       platform: scrapedData?.platform || 'Other',
       siteType: scrapedData?.siteType || 'employer',
+      platformCategory: scrapedData?.platformCategory || 'Other',
       company: inputCompany.value.trim(),
       role: inputRole.value.trim(),
       location: inputLocation.value.trim(),
@@ -492,9 +696,10 @@
       keywords: keywordsData || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] },
       jobType: inputJobType.value || 'Unknown',
       workMode: inputWorkMode.value || 'Unknown',
-      jobDescription: saveJDOn ? (scrapedData?.jobDescription || '') : '',
+      jobDescription: activeJD,
       stipend: inputStipend.value.trim(),
-      duration: inputDuration.value.trim()
+      duration: inputDuration.value.trim(),
+      followUpDate: inputFollowupDate?.value || '',
     };
 
     try {
@@ -532,11 +737,25 @@
     });
 
     // Status pills
-    document.querySelectorAll('.pill-status').forEach(pill => {
+    document.querySelectorAll('#status-pills .pill-status').forEach(pill => {
       pill.addEventListener('click', () => {
+        const prevStatus = selectedStatus;
         selectedStatus = pill.dataset.value;
         updateStatusPills();
+        updateFollowupVisibility();
+
+        // Status note prompt
+        if (selectedStatus !== prevStatus) {
+          appendStatusNote(prevStatus); // save previous if pending
+          checkStatusNotePrompt(selectedStatus);
+        }
       });
+    });
+
+    // Status note input — append on Enter
+    $('status-note-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { appendStatusNote(selectedStatus); e.preventDefault(); }
+      if (e.key === 'Escape') { $('status-note-prompt').classList.add('hidden'); }
     });
 
     // Referral toggle
@@ -547,12 +766,13 @@
       if (referralOn) {
         selectedStatus = 'Referral Pending';
         updateStatusPills();
+        updateFollowupVisibility();
       }
     });
 
-    // Copy referral
+    // Copy referral (template-based)
     $('btn-copy-referral').addEventListener('click', async () => {
-      const msg = generateReferralMessage();
+      const msg = await generateReferralMessage();
       try {
         await navigator.clipboard.writeText(msg);
         $('btn-copy-referral').textContent = '✓ Copied!';
@@ -560,24 +780,50 @@
       } catch { /* fallback */ }
     });
 
-    // JD toggle
+    // JD Insights toggle
     jdToggle.addEventListener('click', () => {
       const isOpen = !jdPanel.classList.contains('hidden');
       jdPanel.classList.toggle('hidden', isOpen);
       jdChevron.classList.toggle('open', !isOpen);
     });
 
-    // Job type change (show/hide conditional fields)
+    // Job type change
     inputJobType.addEventListener('change', updateConditionalFields);
 
-    // Save JD toggle
+    // Save JD toggle — shows/hides preview
     $('toggle-save-jd').addEventListener('click', () => {
       saveJDOn = !saveJDOn;
       $('toggle-save-jd').setAttribute('aria-checked', saveJDOn);
+      if (saveJDOn) {
+        showJDPreview();
+      } else {
+        hideJDPreview();
+      }
+    });
+
+    // JD preview edit mode
+    $('jd-preview-edit')?.addEventListener('click', () => {
+      const textarea = $('jd-preview-text');
+      jdEditMode = !jdEditMode;
+      textarea.readOnly = !jdEditMode;
+      $('jd-preview-edit').textContent = jdEditMode ? 'Done editing' : 'Edit';
+      if (jdEditMode) textarea.focus();
+    });
+
+    // JD preview text changes
+    $('jd-preview-text')?.addEventListener('input', () => {
+      updateJDCharCount();
+      updateJDQuality();
+    });
+
+    // Manual JD paste
+    $('jd-manual-input')?.addEventListener('input', () => {
+      updateJDCharCount();
+      updateJDQuality();
     });
 
     // Copy keywords
-    $('btn-copy-keywords').addEventListener('click', async () => {
+    $('btn-copy-keywords')?.addEventListener('click', async () => {
       if (!keywordsData) return;
       const all = [...(keywordsData.mustHave || []), ...(keywordsData.niceToHave || [])];
       const text = 'Key skills: ' + all.join(', ');
@@ -588,6 +834,37 @@
       } catch { /* fallback */ }
     });
 
+    // AI prompts toggle
+    $('ai-prompts-toggle')?.addEventListener('click', () => {
+      const panel = $('ai-prompts-panel');
+      const chevron = $('ai-chevron');
+      const isOpen = !panel.classList.contains('hidden');
+      panel.classList.toggle('hidden', isOpen);
+      chevron.classList.toggle('open', !isOpen);
+    });
+
+    // AI prompt buttons
+    $('btn-ai-cover-letter')?.addEventListener('click', () => handleAIPrompt('coverLetterPrompt'));
+    $('btn-ai-resume')?.addEventListener('click', () => handleAIPrompt('resumeTailoringPrompt'));
+    $('btn-ai-interview')?.addEventListener('click', () => handleAIPrompt('interviewPrepPrompt'));
+    $('btn-ai-referral')?.addEventListener('click', async () => {
+      const msg = await generateReferralMessage();
+      try {
+        await navigator.clipboard.writeText(msg);
+        showAIToast('✓ Referral message copied!', 'success');
+      } catch { showAIToast('Failed to copy', 'error'); }
+    });
+
+    // Snippet pills
+    snippetPills?.addEventListener('click', (e) => {
+      const pill = e.target.closest('.snippet-pill');
+      if (!pill) return;
+      const text = pill.textContent;
+      const current = inputNotes.value.trim();
+      inputNotes.value = current ? `${current}\n${text}` : text;
+      inputNotes.rows = 3;
+    });
+
     // Log button
     btnLog.addEventListener('click', handleSave);
 
@@ -596,11 +873,7 @@
       dupBanner.classList.add('hidden');
       btnLog.disabled = false;
       btnLog.style.opacity = '1';
-      if (dupResult?.type === 'repost') {
-        handleForceSave(dupResult.match.id);
-      } else {
-        handleForceSave(dupResult?.match?.id || '');
-      }
+      handleForceSave(dupResult?.match?.id || '');
     });
 
     btnDupUpdate.addEventListener('click', () => {
@@ -627,10 +900,26 @@
       } catch { /* ignore */ }
     });
 
+    // Weekly banner
+    $('weekly-banner-dash')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
+    });
+    $('weekly-banner-dismiss')?.addEventListener('click', async () => {
+      $('weekly-banner').classList.add('hidden');
+      await saveSettings({ lastWeeklyDismiss: new Date().toISOString() });
+    });
+
     // Settings
     btnSettings.addEventListener('click', () => settingsPanel.classList.remove('hidden'));
     btnBack.addEventListener('click', () => settingsPanel.classList.add('hidden'));
     btnDashboard.addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') }));
+
+    // Open full Settings Hub
+    $('btn-open-settings-hub')?.addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') + '#settings' });
+    });
 
     $('btn-save-settings').addEventListener('click', async () => {
       settings = await saveSettings({
@@ -638,24 +927,9 @@
         labelB: $('set-label-b').value.trim(), emailB: $('set-email-b').value.trim(),
         defaultEmail: $('set-default-email').value, defaultStatus: $('set-default-status').value,
         weeklyGoal: parseInt($('set-weekly-goal').value) || 5,
-        saveJD: $('set-save-jd').checked
       });
       applySettings();
       settingsPanel.classList.add('hidden');
-    });
-
-    $('btn-export-csv').addEventListener('click', async () => {
-      const apps = await getAllApplications();
-      const csv = exportAsCSV(apps, settings);
-      downloadCSV(csv);
-    });
-
-    $('btn-clear-data').addEventListener('click', async () => {
-      if (confirm('Delete ALL application data? This cannot be undone.')) {
-        await clearAllData();
-        $('btn-clear-data').textContent = '✓ Cleared';
-        setTimeout(() => { $('btn-clear-data').textContent = '🗑️ Clear all data'; }, 1500);
-      }
     });
 
     // Notes expand

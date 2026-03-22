@@ -30,6 +30,7 @@
     { key: 'workmode', label: 'Work Mode', default: true },
     { key: 'jobid', label: 'Job ID', default: true },
     { key: 'ref', label: 'Ref', default: true },
+    { key: 'followup', label: 'Follow-up', default: true },
     { key: 'actions', label: 'Actions', default: true },
   ];
   let visibleCols = loadColVisibility();
@@ -72,7 +73,6 @@
 
   const statTotal = $('stat-total');
   const statWeek = $('stat-week');
-  const statGoalNum = $('stat-goal-num');
   const statPipeline = $('stat-pipeline');
   const statReferrals = $('stat-referrals');
   const progressFill = $('progress-fill');
@@ -109,7 +109,6 @@
   function renderStats(stats) {
     statTotal.textContent = stats.total;
     statWeek.textContent = stats.thisWeek;
-    statGoalNum.textContent = stats.weeklyGoal;
     statPipeline.textContent = stats.activePipeline;
     statReferrals.textContent = stats.referralCount;
     const pct = stats.weeklyGoal > 0 ? Math.min((stats.thisWeek / stats.weeklyGoal) * 100, 100) : 0;
@@ -298,6 +297,9 @@
             ${app.referral ? '✓' : '—'}
           </span>
         </td>
+        <td class="col-followup">
+          ${renderFollowUpBadge(app)}
+        </td>
         <td class="col-actions">
           <div class="action-btns">
             <button class="action-btn" data-action="edit" data-id="${app.id}">Edit</button>
@@ -451,6 +453,10 @@
     $('edit-referral').value = app.referralPerson || '';
     $('edit-notes').value = app.notes || '';
     $('edit-url').value = app.jobUrl || '';
+    const fuDate = $('edit-followup-date');
+    const fuNote = $('edit-followup-note');
+    if (fuDate) fuDate.value = app.followUpDate || '';
+    if (fuNote) fuNote.value = app.followUpNote || '';
     editModal.classList.remove('hidden');
   }
 
@@ -470,7 +476,9 @@
       referralPerson: $('edit-referral').value.trim(),
       referral: !!$('edit-referral').value.trim(),
       notes: $('edit-notes').value.trim(),
-      jobUrl: $('edit-url').value.trim()
+      jobUrl: $('edit-url').value.trim(),
+      followUpDate: $('edit-followup-date')?.value || '',
+      followUpNote: $('edit-followup-note')?.value || '',
     };
     try {
       await updateApplication(editingApp.id, patch);
@@ -650,6 +658,521 @@
       if (diff < 30) return `${Math.floor(diff / 7)}w ago`;
       return `${Math.floor(diff / 30)}mo ago`;
     } catch { return '—'; }
+  }
+
+  /* ═══════════════════════════════
+     Follow-up Badge
+     ═══════════════════════════════ */
+
+  function renderFollowUpBadge(app) {
+    if (app.followUpDone) return '<span class="followup-badge followup-done">✓ Done</span>';
+    if (!app.followUpDate) return '—';
+    const today = new Date().toISOString().split('T')[0];
+    if (app.followUpDate < today) return `<span class="followup-badge followup-overdue">⚠️ Overdue</span>`;
+    if (app.followUpDate === today) return `<span class="followup-badge followup-today">📅 Today</span>`;
+    const d = Math.ceil((new Date(app.followUpDate) - new Date(today)) / 86400000);
+    return `<span class="followup-badge followup-soon">${d}d</span>`;
+  }
+
+  /* ═══════════════════════════════
+     TAB SWITCHING
+     ═══════════════════════════════ */
+
+  document.querySelectorAll('.dash-tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
+      tab.classList.add('active');
+      const target = tab.dataset.tab;
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+      const el = document.getElementById('tab-' + target);
+      if (el) el.classList.add('active');
+      if (target === 'settings') initSettingsHub();
+    });
+  });
+
+  // Hash-based opening
+  if (window.location.hash === '#settings') {
+    document.querySelectorAll('.dash-tab').forEach(t => t.classList.remove('active'));
+    document.querySelector('[data-tab="settings"]').classList.add('active');
+    document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+    document.getElementById('tab-settings').classList.add('active');
+    setTimeout(() => initSettingsHub(), 100);
+  }
+
+  /* Settings Hub sidebar nav */
+  document.querySelectorAll('.settings-nav').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.settings-nav').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      document.querySelectorAll('.settings-panel-content').forEach(p => p.classList.remove('active'));
+      const panel = document.getElementById('panel-' + btn.dataset.panel);
+      if (panel) panel.classList.add('active');
+    });
+  });
+
+  let settingsHubInited = false;
+  async function initSettingsHub() {
+    if (settingsHubInited) return;
+    settingsHubInited = true;
+    settings = await getSettings();
+    await loadProfilePanel();
+    await loadGeneralPanel();
+    await loadTemplatesPanel();
+    await loadSnippetsPanel();
+    await loadSkillDictPanel();
+    await loadPlatformsPanel();
+    wireSettingsEvents();
+    await loadStoragePanel();
+  }
+
+  /* ═══════════════════════════════
+     PROFILE PANEL
+     ═══════════════════════════════ */
+
+  let profileSkills = [];
+
+  async function loadProfilePanel() {
+    const p = settings.profile || {};
+    document.getElementById('prof-name').value = p.name || '';
+    document.getElementById('prof-college').value = p.college || '';
+    document.getElementById('prof-degree').value = p.degree || '';
+    document.getElementById('prof-cgpa').value = p.cgpa || '';
+    document.getElementById('prof-resume').value = p.resumeUrl || '';
+    document.getElementById('prof-linkedin').value = p.linkedinUrl || '';
+    profileSkills = [...(settings.mySkills || [])];
+    renderProfileSkillTags();
+  }
+
+  function renderProfileSkillTags() {
+    const container = document.getElementById('my-skills-tags');
+    container.innerHTML = profileSkills.map((s, i) =>
+      `<span class="tag-item">${esc(s)} <button class="tag-remove" data-idx="${i}">&times;</button></span>`
+    ).join('');
+  }
+
+  /* ═══════════════════════════════
+     GENERAL PANEL
+     ═══════════════════════════════ */
+
+  async function loadGeneralPanel() {
+    document.getElementById('gen-label-a').value = settings.labelA || '';
+    document.getElementById('gen-email-a').value = settings.emailA || '';
+    document.getElementById('gen-label-b').value = settings.labelB || '';
+    document.getElementById('gen-email-b').value = settings.emailB || '';
+    document.getElementById('gen-default-email').value = settings.defaultEmail || 'A';
+    document.getElementById('gen-default-status').value = settings.defaultStatus || 'Applied';
+    document.getElementById('gen-weekly-goal').value = settings.weeklyGoal || 5;
+    document.getElementById('gen-followup-days').value = settings.followUpDefaultDays || 7;
+    document.getElementById('gen-save-jd').checked = settings.saveJD || false;
+  }
+
+  /* ═══════════════════════════════
+     TEMPLATES PANEL
+     ═══════════════════════════════ */
+
+  let currentTemplates = {};
+
+  async function loadTemplatesPanel() {
+    currentTemplates = await getTemplates();
+    const sel = document.getElementById('tpl-select');
+    document.getElementById('tpl-editor').value = currentTemplates[sel.value] || '';
+    renderPlaceholderTable();
+  }
+
+  function renderPlaceholderTable() {
+    const table = document.getElementById('placeholder-table');
+    if (!table || typeof PLACEHOLDER_TABLE === 'undefined') return;
+    table.innerHTML = '<thead><tr><th>Placeholder</th><th>Description</th></tr></thead><tbody>' +
+      PLACEHOLDER_TABLE.map(p => `<tr><td><code>{{${p.key}}}</code></td><td>${esc(p.desc)}</td></tr>`).join('') +
+      '</tbody>';
+  }
+
+  /* ═══════════════════════════════
+     SNIPPETS PANEL
+     ═══════════════════════════════ */
+
+  let snippetsList = [];
+
+  async function loadSnippetsPanel() {
+    snippetsList = await getSnippets();
+    renderSnippetsList();
+  }
+
+  function renderSnippetsList() {
+    const container = document.getElementById('snippet-list');
+    container.innerHTML = snippetsList.map((s, i) =>
+      `<div class="snippet-item" draggable="true" data-idx="${i}">
+        <span class="snippet-drag">⠿</span>
+        <span class="snippet-text">${esc(s)}</span>
+        <button class="btn btn-xs btn-ghost snippet-remove" data-idx="${i}">&times;</button>
+      </div>`
+    ).join('');
+  }
+
+  /* ═══════════════════════════════
+     SKILL DICTIONARY PANEL
+     ═══════════════════════════════ */
+
+  let skillDict = [];
+
+  async function loadSkillDictPanel() {
+    skillDict = await getSkillDict();
+    renderSkillDictEditor();
+  }
+
+  function renderSkillDictEditor() {
+    const container = document.getElementById('skill-dict-editor');
+    container.innerHTML = skillDict.map((cat, ci) => {
+      const pills = cat.skills.map((s, si) =>
+        `<span class="tag-item">${esc(s)} <button class="tag-remove skill-remove" data-ci="${ci}" data-si="${si}">&times;</button></span>`
+      ).join('');
+      return `<div class="skill-category-card">
+        <h4>${esc(cat.category)} <span class="skill-count">(${cat.skills.length})</span></h4>
+        <div class="tag-list">${pills}</div>
+        <div style="display:flex;gap:4px;margin-top:4px">
+          <input type="text" class="skill-add-input" data-ci="${ci}" placeholder="Add skill..." style="flex:1;padding:4px 6px;font-size:11px">
+          <button class="btn btn-xs btn-outline skill-add-btn" data-ci="${ci}">+</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  /* ═══════════════════════════════
+     PLATFORMS PANEL
+     ═══════════════════════════════ */
+
+  let platformsList = [];
+
+  async function loadPlatformsPanel() {
+    platformsList = await getPlatforms();
+    renderPlatformTable();
+  }
+
+  function renderPlatformTable() {
+    const tbody = document.getElementById('platform-table-body');
+    tbody.innerHTML = platformsList.map(p => `
+      <tr>
+        <td><input type="checkbox" class="plat-toggle" data-id="${p.id}" ${p.enabled ? 'checked' : ''}></td>
+        <td>${esc(p.name)} ${p.builtIn ? '<span class="badge badge-source">Built-in</span>' : ''}</td>
+        <td>${esc(p.category)}</td>
+        <td>${esc(p.siteType)}</td>
+        <td><code>${esc(p.matches.join(', '))}</code></td>
+        <td>${p.builtIn ? '' : '<button class="btn btn-xs btn-danger plat-delete" data-id="' + p.id + '">Delete</button>'}</td>
+      </tr>
+    `).join('');
+  }
+
+  /* ═══════════════════════════════
+     STORAGE PANEL
+     ═══════════════════════════════ */
+
+  async function loadStoragePanel() {
+    try {
+      const usage = await getStorageUsage();
+      const pct = Math.round((usage.total / usage.limit) * 100);
+      document.getElementById('storage-bar-fill').style.width = pct + '%';
+      document.getElementById('storage-bar-fill').style.background = pct > 80 ? '#DC2626' : pct > 60 ? '#D97706' : '#4F46E5';
+      document.getElementById('storage-total').textContent = `${usage.total.toLocaleString()} / ${usage.limit.toLocaleString()} bytes (${pct}%)`;
+
+      const keyNames = { jt_apps: 'Applications', jt_settings: 'Settings', jt_templates: 'Templates', jt_snippets: 'Snippets', jt_platforms: 'Platforms', jt_skill_dict: 'Skill Dictionary' };
+      const tbody = document.querySelector('#storage-breakdown tbody');
+      tbody.innerHTML = Object.entries(usage.breakdown).map(([k, v]) =>
+        `<tr><td>${keyNames[k] || k}</td><td>${v.toLocaleString()}</td><td>${usage.total > 0 ? Math.round((v / usage.total) * 100) : 0}%</td></tr>`
+      ).join('');
+    } catch { /* ignore */ }
+  }
+
+  /* ═══════════════════════════════
+     SETTINGS HUB EVENT WIRING
+     ═══════════════════════════════ */
+
+  function wireSettingsEvents() {
+    // Profile: save
+    document.getElementById('btn-save-profile')?.addEventListener('click', async () => {
+      settings = await saveSettings({
+        profile: {
+          name: document.getElementById('prof-name').value.trim(),
+          college: document.getElementById('prof-college').value.trim(),
+          degree: document.getElementById('prof-degree').value.trim(),
+          cgpa: document.getElementById('prof-cgpa').value.trim(),
+          resumeUrl: document.getElementById('prof-resume').value.trim(),
+          linkedinUrl: document.getElementById('prof-linkedin').value.trim(),
+        },
+        mySkills: [...profileSkills],
+      });
+      showToast('Profile saved');
+    });
+
+    // Profile: skill tag input
+    document.getElementById('my-skills-input')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      const val = e.target.value.trim().toLowerCase();
+      if (val && !profileSkills.includes(val)) {
+        profileSkills.push(val);
+        renderProfileSkillTags();
+      }
+      e.target.value = '';
+    });
+
+    // Profile: remove skill tag
+    document.getElementById('my-skills-tags')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.tag-remove');
+      if (!btn) return;
+      profileSkills.splice(parseInt(btn.dataset.idx), 1);
+      renderProfileSkillTags();
+    });
+
+    // General: save
+    document.getElementById('btn-save-general')?.addEventListener('click', async () => {
+      settings = await saveSettings({
+        labelA: document.getElementById('gen-label-a').value.trim(),
+        emailA: document.getElementById('gen-email-a').value.trim(),
+        labelB: document.getElementById('gen-label-b').value.trim(),
+        emailB: document.getElementById('gen-email-b').value.trim(),
+        defaultEmail: document.getElementById('gen-default-email').value,
+        defaultStatus: document.getElementById('gen-default-status').value,
+        weeklyGoal: parseInt(document.getElementById('gen-weekly-goal').value) || 5,
+        followUpDefaultDays: parseInt(document.getElementById('gen-followup-days').value) || 7,
+        saveJD: document.getElementById('gen-save-jd').checked,
+      });
+      showToast('General settings saved');
+    });
+
+    // Templates: load on select change
+    document.getElementById('tpl-select')?.addEventListener('change', (e) => {
+      document.getElementById('tpl-editor').value = currentTemplates[e.target.value] || '';
+    });
+
+    // Templates: save
+    document.getElementById('btn-save-template')?.addEventListener('click', async () => {
+      const key = document.getElementById('tpl-select').value;
+      const val = document.getElementById('tpl-editor').value;
+      currentTemplates = await saveTemplates({ [key]: val });
+      showToast('Template saved');
+    });
+
+    // Templates: reset
+    document.getElementById('btn-reset-template')?.addEventListener('click', async () => {
+      const key = document.getElementById('tpl-select').value;
+      if (!confirm(`Reset "${key}" to factory default?`)) return;
+      currentTemplates = await resetTemplate(key);
+      document.getElementById('tpl-editor').value = currentTemplates[key] || '';
+      showToast('Template reset to default');
+    });
+
+    // Snippets: add
+    document.getElementById('btn-add-snippet')?.addEventListener('click', async () => {
+      const val = document.getElementById('snippet-new-input').value.trim();
+      if (!val) return;
+      snippetsList.push(val);
+      await saveSnippets(snippetsList);
+      document.getElementById('snippet-new-input').value = '';
+      renderSnippetsList();
+    });
+
+    // Snippets: remove
+    document.getElementById('snippet-list')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.snippet-remove');
+      if (!btn) return;
+      snippetsList.splice(parseInt(btn.dataset.idx), 1);
+      saveSnippets(snippetsList);
+      renderSnippetsList();
+    });
+
+    // Snippets: reset
+    document.getElementById('btn-reset-snippets')?.addEventListener('click', async () => {
+      if (!confirm('Reset snippets to defaults?')) return;
+      snippetsList = [...DEFAULT_SNIPPETS];
+      await saveSnippets(snippetsList);
+      renderSnippetsList();
+      showToast('Snippets reset');
+    });
+
+    // Skill dict: remove skill
+    document.getElementById('skill-dict-editor')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.skill-remove');
+      if (!btn) return;
+      const ci = parseInt(btn.dataset.ci), si = parseInt(btn.dataset.si);
+      skillDict[ci].skills.splice(si, 1);
+      saveSkillDict(skillDict);
+      renderSkillDictEditor();
+    });
+
+    // Skill dict: add skill
+    document.getElementById('skill-dict-editor')?.addEventListener('click', (e) => {
+      const btn = e.target.closest('.skill-add-btn');
+      if (!btn) return;
+      const ci = parseInt(btn.dataset.ci);
+      const input = document.querySelector(`.skill-add-input[data-ci="${ci}"]`);
+      const val = input?.value.trim().toLowerCase();
+      if (val && !skillDict[ci].skills.includes(val)) {
+        skillDict[ci].skills.push(val);
+        saveSkillDict(skillDict);
+        renderSkillDictEditor();
+      }
+      if (input) input.value = '';
+    });
+
+    // Skill dict: add skill on Enter
+    document.getElementById('skill-dict-editor')?.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      const input = e.target.closest('.skill-add-input');
+      if (!input) return;
+      e.preventDefault();
+      const ci = parseInt(input.dataset.ci);
+      const val = input.value.trim().toLowerCase();
+      if (val && !skillDict[ci].skills.includes(val)) {
+        skillDict[ci].skills.push(val);
+        saveSkillDict(skillDict);
+        renderSkillDictEditor();
+      }
+      input.value = '';
+    });
+
+    // Skill dict: add category
+    document.getElementById('btn-add-category')?.addEventListener('click', async () => {
+      const val = document.getElementById('new-category-input').value.trim();
+      if (!val) return;
+      skillDict.push({ category: val, skills: [] });
+      await saveSkillDict(skillDict);
+      document.getElementById('new-category-input').value = '';
+      renderSkillDictEditor();
+    });
+
+    // Skill dict: reset
+    document.getElementById('btn-reset-skills')?.addEventListener('click', async () => {
+      if (!confirm('Reset skill dictionary to defaults?')) return;
+      skillDict = DEFAULT_SKILL_DICT.map(c => ({ ...c, skills: [...c.skills] }));
+      await saveSkillDict(skillDict);
+      renderSkillDictEditor();
+      showToast('Skill dictionary reset');
+    });
+
+    // Platforms: toggle enable
+    document.getElementById('platform-table-body')?.addEventListener('change', async (e) => {
+      if (!e.target.classList.contains('plat-toggle')) return;
+      const id = e.target.dataset.id;
+      await updatePlatform(id, { enabled: e.target.checked });
+      showToast(e.target.checked ? 'Platform enabled' : 'Platform disabled');
+    });
+
+    // Platforms: delete
+    document.getElementById('platform-table-body')?.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.plat-delete');
+      if (!btn) return;
+      if (!confirm('Delete this custom platform?')) return;
+      await deletePlatform(btn.dataset.id);
+      platformsList = await getPlatforms();
+      renderPlatformTable();
+      showToast('Platform deleted');
+    });
+
+    // Platforms: add
+    document.getElementById('btn-add-platform')?.addEventListener('click', async () => {
+      const name = document.getElementById('new-plat-name').value.trim();
+      const match = document.getElementById('new-plat-match').value.trim();
+      if (!name || !match) { showToast('Name and domain required'); return; }
+      await addPlatform({ name, matches: [match], category: document.getElementById('new-plat-cat').value });
+      platformsList = await getPlatforms();
+      renderPlatformTable();
+      document.getElementById('new-plat-name').value = '';
+      document.getElementById('new-plat-match').value = '';
+      showToast('Platform added');
+    });
+
+    // Platforms: reset
+    document.getElementById('btn-reset-platforms')?.addEventListener('click', async () => {
+      if (!confirm('Reset platforms to defaults? Custom platforms will be removed.')) return;
+      await savePlatforms([...DEFAULT_PLATFORMS]);
+      platformsList = await getPlatforms();
+      renderPlatformTable();
+      showToast('Platforms reset');
+    });
+
+    // Import/Export
+    document.getElementById('btn-ie-csv')?.addEventListener('click', async () => {
+      const apps = await getAllApplications();
+      const csv = exportAsCSV(apps, settings);
+      downloadFile(csv, `jobtrackr_export_${new Date().toISOString().split('T')[0]}.csv`, 'text/csv');
+    });
+
+    document.getElementById('btn-ie-tsv')?.addEventListener('click', async () => {
+      const apps = await getAllApplications();
+      const tsv = exportAsTSV(apps, settings);
+      try {
+        await navigator.clipboard.writeText(tsv);
+        showToast('TSV copied to clipboard — paste into Google Sheets');
+      } catch { showToast('Failed to copy', 'error'); }
+    });
+
+    document.getElementById('btn-ie-backup')?.addEventListener('click', async () => {
+      const backup = await exportFullBackup();
+      const json = JSON.stringify(backup, null, 2);
+      downloadFile(json, `jobtrackr_backup_${new Date().toISOString().split('T')[0]}.json`, 'application/json');
+    });
+
+    document.getElementById('import-csv-file')?.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const result = await importFromCSV(text);
+        showToast(`Imported ${result.imported} applications (${result.skipped} skipped as duplicates)`);
+        await loadData();
+      } catch (err) { showToast('Import failed: ' + err.message); }
+    });
+
+    document.getElementById('import-backup-file')?.addEventListener('change', async (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      const text = await file.text();
+      try {
+        const json = JSON.parse(text);
+        const result = await restoreFromBackup(json);
+        showToast(`Restored ${result.keys.length} data keys`);
+        await loadData();
+        settingsHubInited = false;
+        await initSettingsHub();
+      } catch (err) { showToast('Restore failed: ' + err.message); }
+    });
+
+    // Danger zone
+    document.getElementById('btn-clear-apps')?.addEventListener('click', async () => {
+      if (!confirm('Delete ALL applications? This cannot be undone.')) return;
+      await clearAllApplications();
+      showToast('All applications deleted');
+      await loadData();
+    });
+
+    document.getElementById('btn-reset-all')?.addEventListener('click', async () => {
+      if (!confirm('Reset ALL settings to defaults? This cannot be undone.')) return;
+      await resetAllSettings();
+      showToast('All settings reset to defaults');
+      settingsHubInited = false;
+      settings = await getSettings();
+      await initSettingsHub();
+    });
+
+    // Follow-up mark done from table
+    tableBody?.addEventListener('click', async (e) => {
+      const btn = e.target.closest('.followup-mark-done');
+      if (!btn) return;
+      const id = btn.dataset.id;
+      await new Promise(resolve => {
+        chrome.runtime.sendMessage({ type: 'UPDATE_APPLICATION', id, patch: { followUpDone: true } }, resolve);
+      });
+      await loadData();
+    });
+  }
+
+  function downloadFile(content, filename, type) {
+    const blob = new Blob([content], { type: type + ';charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   }
 
   /* ─── Init ─── */
