@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=360">
+  <title>JobTrackr</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <!-- ═══ Main View ═══ -->
+  <div id="main-view">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-left">
+        <span class="logo">J</span>
+        <h1 class="header-title">JobTrackr</h1>
+      </div>
+      <div class="header-right">
+        <button id="btn-settings" class="icon-btn" title="Settings" aria-label="Settings">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+        <button id="btn-dashboard" class="icon-btn" title="Open Dashboard" aria-label="Open Dashboard">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Status Update Quick Bar (shown when page matches existing entry) -->
+    <div id="quick-update-bar" class="quick-update-bar hidden">
+      <span class="quick-label">Quick update:</span>
+      <div class="quick-pills" id="quick-status-pills"></div>
+    </div>
+
+    <!-- Duplicate Warning Banner -->
+    <div id="dup-banner" class="dup-banner hidden">
+      <div class="dup-content">
+        <div class="dup-icon">⚠️</div>
+        <div class="dup-text">
+          <strong id="dup-title">Duplicate Found</strong>
+          <p id="dup-detail"></p>
+        </div>
+      </div>
+      <div class="dup-actions">
+        <button id="btn-dup-update" class="btn btn-sm btn-outline">Update existing</button>
+        <button id="btn-dup-new" class="btn btn-sm btn-primary">Log as new</button>
+      </div>
+    </div>
+
+    <!-- Soft Warning (Tier 3) -->
+    <div id="soft-warning" class="soft-warning hidden">
+      <p id="soft-warning-text"></p>
+      <button id="btn-soft-dismiss" class="btn btn-xs btn-ghost">Dismiss</button>
+    </div>
+
+    <!-- Job Details Section -->
+    <section class="form-section">
+      <div class="field-row">
+        <div class="field">
+          <label for="input-role">Role</label>
+          <input type="text" id="input-role" placeholder="e.g. Software Engineer" maxlength="200">
+        </div>
+        <div class="platform-badge-wrap">
+          <span id="platform-badge" class="platform-badge" title="Auto-detected platform">—</span>
+          <span id="scrape-indicator" class="scrape-dot" title="Scrape quality"></span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="input-company">Company</label>
+        <input type="text" id="input-company" placeholder="e.g. Google" maxlength="200">
+      </div>
+
+      <div class="field">
+        <label for="input-url">Job URL</label>
+        <input type="url" id="input-url" placeholder="https://..." maxlength="2000">
+      </div>
+    </section>
+
+    <!-- Email Selector -->
+    <section class="form-section">
+      <label class="section-label">Apply with</label>
+      <div class="pill-group email-pills" id="email-pills">
+        <button class="pill pill-email active" data-value="A" id="pill-email-a">
+          <span class="pill-label" id="pill-label-a">Primary</span>
+          <span class="pill-email-addr" id="pill-addr-a"></span>
+        </button>
+        <button class="pill pill-email" data-value="B" id="pill-email-b">
+          <span class="pill-label" id="pill-label-b">Referral</span>
+          <span class="pill-email-addr" id="pill-addr-b"></span>
+        </button>
+      </div>
+    </section>
+
+    <!-- Status Selector -->
+    <section class="form-section">
+      <label class="section-label">Status</label>
+      <div class="pill-group status-pills" id="status-pills">
+        <button class="pill pill-status active" data-value="Applied">Applied</button>
+        <button class="pill pill-status" data-value="Referral Pending">Referral Pending</button>
+        <button class="pill pill-status" data-value="Re-applied (Referral)">Re-applied</button>
+        <button class="pill pill-status" data-value="Interviewing">Interviewing</button>
+        <button class="pill pill-status" data-value="Rejected">Rejected</button>
+        <button class="pill pill-status" data-value="Offer">Offer</button>
+        <button class="pill pill-status" data-value="Withdrawn">Withdrawn</button>
+      </div>
+    </section>
+
+    <!-- Referral Section -->
+    <section class="form-section referral-section" id="referral-section">
+      <div class="toggle-row">
+        <label class="toggle-label" for="toggle-referral">
+          <span>Seeking referral for this role</span>
+        </label>
+        <button id="toggle-referral" class="toggle" role="switch" aria-checked="false">
+          <span class="toggle-slider"></span>
+        </button>
+      </div>
+      <div id="referral-fields" class="referral-fields hidden">
+        <input type="text" id="input-referral-person" placeholder="Referred by (name / LinkedIn URL)" maxlength="200">
+        <button id="btn-copy-referral" class="btn btn-xs btn-ghost" title="Copy referral ask message">
+          📋 Copy referral message
+        </button>
+      </div>
+    </section>
+
+    <!-- Notes -->
+    <section class="form-section">
+      <textarea id="input-notes" placeholder="Quick note (optional)" maxlength="500" rows="1"></textarea>
+    </section>
+
+    <!-- Log Button -->
+    <button id="btn-log" class="btn btn-primary btn-block">
+      <span id="btn-log-text">Log Application</span>
+      <span id="btn-log-spinner" class="spinner hidden"></span>
+    </button>
+
+    <!-- Success State -->
+    <div id="success-state" class="success-state hidden">
+      <div class="success-icon">✓</div>
+      <div class="success-text">
+        <strong>Logged!</strong>
+        <span id="success-detail"></span>
+      </div>
+      <a href="#" id="success-dashboard" class="success-link">View in Dashboard →</a>
+    </div>
+  </div>
+
+  <!-- ═══ Settings Panel ═══ -->
+  <div id="settings-panel" class="settings-panel hidden">
+    <header class="header">
+      <button id="btn-back" class="icon-btn" title="Back" aria-label="Back">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+      </button>
+      <h1 class="header-title">Settings</h1>
+      <div style="width:36px"></div>
+    </header>
+
+    <div class="settings-body">
+      <div class="settings-group">
+        <h3>Email A</h3>
+        <input type="text" id="set-label-a" placeholder="Label (e.g. Primary)" maxlength="30">
+        <input type="email" id="set-email-a" placeholder="email@example.com" maxlength="100">
+      </div>
+
+      <div class="settings-group">
+        <h3>Email B</h3>
+        <input type="text" id="set-label-b" placeholder="Label (e.g. Referral)" maxlength="30">
+        <input type="email" id="set-email-b" placeholder="email@example.com" maxlength="100">
+      </div>
+
+      <div class="settings-group">
+        <h3>Defaults</h3>
+        <div class="field-inline">
+          <label>Default Email</label>
+          <select id="set-default-email">
+            <option value="A">Email A</option>
+            <option value="B">Email B</option>
+          </select>
+        </div>
+        <div class="field-inline">
+          <label>Default Status</label>
+          <select id="set-default-status">
+            <option value="Applied">Applied</option>
+            <option value="Referral Pending">Referral Pending</option>
+            <option value="Re-applied (Referral)">Re-applied (Referral)</option>
+            <option value="Interviewing">Interviewing</option>
+          </select>
+        </div>
+        <div class="field-inline">
+          <label>Weekly Goal</label>
+          <input type="number" id="set-weekly-goal" min="1" max="100" value="5">
+        </div>
+      </div>
+
+      <div class="settings-group">
+        <h3>Data</h3>
+        <button id="btn-export-csv" class="btn btn-outline btn-block">📥 Export all as CSV</button>
+        <button id="btn-clear-data" class="btn btn-danger btn-block">🗑️ Clear all data</button>
+      </div>
+
+      <button id="btn-save-settings" class="btn btn-primary btn-block">Save Settings</button>
+    </div>
+  </div>
+
+  <script src="storage.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
