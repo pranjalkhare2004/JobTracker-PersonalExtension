@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=360">
+  <meta name="viewport" content="width=380">
   <title>JobTrackr</title>
   <link rel="stylesheet" href="popup.css">
 </head>
@@ -25,42 +25,53 @@
       </div>
     </header>
 
-    <!-- Status Update Quick Bar (shown when page matches existing entry) -->
-    <div id="quick-update-bar" class="quick-update-bar hidden">
-      <span class="quick-label">Quick update:</span>
-      <div class="quick-pills" id="quick-status-pills"></div>
+    <!-- Auto-fill Failed Banner -->
+    <div id="autofill-failed" class="info-banner banner-yellow hidden">
+      ⚠️ Auto-fill failed — enter details manually. URL has been pre-filled.
     </div>
 
-    <!-- Duplicate Warning Banner -->
+    <!-- Aggregator Hint -->
+    <div id="aggregator-hint" class="info-banner banner-blue hidden">
+      <span id="aggregator-text">ℹ️ Job ID not available on this platform. Visit the company careers page for the real Job ID.</span>
+      <a id="aggregator-link" href="#" target="_blank" class="banner-link hidden">Open on company site →</a>
+    </div>
+
+    <!-- Duplicate / Re-post Banner -->
     <div id="dup-banner" class="dup-banner hidden">
       <div class="dup-content">
-        <div class="dup-icon">⚠️</div>
+        <div class="dup-icon" id="dup-emoji">⚠️</div>
         <div class="dup-text">
           <strong id="dup-title">Duplicate Found</strong>
           <p id="dup-detail"></p>
         </div>
       </div>
       <div class="dup-actions">
-        <button id="btn-dup-update" class="btn btn-sm btn-outline">Update existing</button>
+        <button id="btn-dup-update" class="btn btn-sm btn-outline">Update status</button>
         <button id="btn-dup-new" class="btn btn-sm btn-primary">Log as new</button>
       </div>
     </div>
 
-    <!-- Soft Warning (Tier 3) -->
+    <!-- Soft Warning (fuzzy) -->
     <div id="soft-warning" class="soft-warning hidden">
       <p id="soft-warning-text"></p>
       <button id="btn-soft-dismiss" class="btn btn-xs btn-ghost">Dismiss</button>
     </div>
 
+    <!-- Quick Update Bar -->
+    <div id="quick-update-bar" class="quick-update-bar hidden">
+      <span class="quick-label">Quick update:</span>
+      <div class="quick-pills" id="quick-status-pills"></div>
+    </div>
+
     <!-- Job Details Section -->
     <section class="form-section">
       <div class="field-row">
-        <div class="field">
+        <div class="field flex-1">
           <label for="input-role">Role</label>
           <input type="text" id="input-role" placeholder="e.g. Software Engineer" maxlength="200">
         </div>
         <div class="platform-badge-wrap">
-          <span id="platform-badge" class="platform-badge" title="Auto-detected platform">—</span>
+          <span id="platform-badge" class="platform-badge" data-platform="Other">—</span>
           <span id="scrape-indicator" class="scrape-dot" title="Scrape quality"></span>
         </div>
       </div>
@@ -70,9 +81,26 @@
         <input type="text" id="input-company" placeholder="e.g. Google" maxlength="200">
       </div>
 
-      <div class="field">
-        <label for="input-url">Job URL</label>
-        <input type="url" id="input-url" placeholder="https://..." maxlength="2000">
+      <div class="field-row-2">
+        <div class="field flex-1">
+          <label for="input-location">Location</label>
+          <input type="text" id="input-location" placeholder="e.g. Bangalore, KA" maxlength="200">
+        </div>
+        <div class="field flex-1">
+          <label for="input-source">Source</label>
+          <input type="text" id="input-source" placeholder="e.g. LinkedIn" maxlength="100">
+        </div>
+      </div>
+
+      <div class="field-row-2">
+        <div class="field flex-1">
+          <label for="input-jobid">Job ID</label>
+          <input type="text" id="input-jobid" placeholder="e.g. REQ571718" maxlength="100" class="mono">
+        </div>
+        <div class="field flex-1">
+          <label for="input-url">Job URL</label>
+          <input type="url" id="input-url" placeholder="https://..." maxlength="2000">
+        </div>
       </div>
     </section>
 
@@ -108,18 +136,36 @@
     <!-- Referral Section -->
     <section class="form-section referral-section" id="referral-section">
       <div class="toggle-row">
-        <label class="toggle-label" for="toggle-referral">
-          <span>Seeking referral for this role</span>
-        </label>
+        <label class="toggle-label"><span>Seeking referral</span></label>
         <button id="toggle-referral" class="toggle" role="switch" aria-checked="false">
           <span class="toggle-slider"></span>
         </button>
       </div>
       <div id="referral-fields" class="referral-fields hidden">
-        <input type="text" id="input-referral-person" placeholder="Referred by (name / LinkedIn URL)" maxlength="200">
-        <button id="btn-copy-referral" class="btn btn-xs btn-ghost" title="Copy referral ask message">
-          📋 Copy referral message
-        </button>
+        <input type="text" id="input-referral-person" placeholder="Referred by (name)" maxlength="200">
+        <button id="btn-copy-referral" class="btn btn-xs btn-ghost">📋 Copy referral message</button>
+      </div>
+    </section>
+
+    <!-- JD Insights Panel (collapsed by default) -->
+    <section class="form-section jd-section" id="jd-section">
+      <button id="jd-toggle" class="jd-toggle">
+        <span>JD Insights</span>
+        <span id="jd-summary" class="jd-summary"></span>
+        <span class="jd-chevron" id="jd-chevron">▸</span>
+      </button>
+      <div id="jd-panel" class="jd-panel hidden">
+        <div class="jd-group" id="jd-must-have">
+          <label>MUST HAVE</label>
+          <div class="skill-pills" id="jd-must-pills"></div>
+        </div>
+        <div class="jd-group" id="jd-nice-have">
+          <label>NICE TO HAVE</label>
+          <div class="skill-pills" id="jd-nice-pills"></div>
+        </div>
+        <div class="jd-match" id="jd-match"></div>
+        <div class="jd-level" id="jd-level"></div>
+        <button id="btn-copy-keywords" class="btn btn-xs btn-ghost">📋 Copy for resume</button>
       </div>
     </section>
 
@@ -129,7 +175,7 @@
     </section>
 
     <!-- Log Button -->
-    <button id="btn-log" class="btn btn-primary btn-block">
+    <button id="btn-log" class="btn btn-primary btn-block btn-log">
       <span id="btn-log-text">Log Application</span>
       <span id="btn-log-spinner" class="spinner hidden"></span>
     </button>
@@ -154,50 +200,28 @@
       <h1 class="header-title">Settings</h1>
       <div style="width:36px"></div>
     </header>
-
     <div class="settings-body">
       <div class="settings-group">
         <h3>Email A</h3>
         <input type="text" id="set-label-a" placeholder="Label (e.g. Primary)" maxlength="30">
         <input type="email" id="set-email-a" placeholder="email@example.com" maxlength="100">
       </div>
-
       <div class="settings-group">
         <h3>Email B</h3>
         <input type="text" id="set-label-b" placeholder="Label (e.g. Referral)" maxlength="30">
         <input type="email" id="set-email-b" placeholder="email@example.com" maxlength="100">
       </div>
-
       <div class="settings-group">
         <h3>Defaults</h3>
-        <div class="field-inline">
-          <label>Default Email</label>
-          <select id="set-default-email">
-            <option value="A">Email A</option>
-            <option value="B">Email B</option>
-          </select>
-        </div>
-        <div class="field-inline">
-          <label>Default Status</label>
-          <select id="set-default-status">
-            <option value="Applied">Applied</option>
-            <option value="Referral Pending">Referral Pending</option>
-            <option value="Re-applied (Referral)">Re-applied (Referral)</option>
-            <option value="Interviewing">Interviewing</option>
-          </select>
-        </div>
-        <div class="field-inline">
-          <label>Weekly Goal</label>
-          <input type="number" id="set-weekly-goal" min="1" max="100" value="5">
-        </div>
+        <div class="field-inline"><label>Default Email</label><select id="set-default-email"><option value="A">Email A</option><option value="B">Email B</option></select></div>
+        <div class="field-inline"><label>Default Status</label><select id="set-default-status"><option value="Applied">Applied</option><option value="Referral Pending">Referral Pending</option><option value="Re-applied (Referral)">Re-applied</option><option value="Interviewing">Interviewing</option></select></div>
+        <div class="field-inline"><label>Weekly Goal</label><input type="number" id="set-weekly-goal" min="1" max="100" value="5"></div>
       </div>
-
       <div class="settings-group">
         <h3>Data</h3>
         <button id="btn-export-csv" class="btn btn-outline btn-block">📥 Export all as CSV</button>
         <button id="btn-clear-data" class="btn btn-danger btn-block">🗑️ Clear all data</button>
       </div>
-
       <button id="btn-save-settings" class="btn btn-primary btn-block">Save Settings</button>
     </div>
   </div>

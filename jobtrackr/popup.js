@@ -1,563 +1,646 @@
 /* ═══════════════════════════════════════
-   popup.js — Popup Logic
+   popup.js — Popup Logic V2
+   Auto-fill, dedup, JD insights, smart referral, MY_SKILLS
    ═══════════════════════════════════════ */
 
 (function () {
   'use strict';
 
+  /* ─── MY SKILLS — Update this list as you learn new things ─── */
+  const MY_SKILLS = [
+    'python', 'java', 'javascript', 'typescript', 'react', 'node.js', 'express',
+    'sql', 'git', 'github', 'linux', 'c++', 'html', 'css', 'mongodb',
+    'rest', 'restful', 'data structures', 'algorithms',
+  ];
+
   /* ─── State ─── */
-  let currentSettings = null;
+  let settings = {};
+  let scrapedData = null;
+  let dupResult = null;
   let selectedEmail = 'A';
   let selectedStatus = 'Applied';
-  let referralEnabled = false;
-  let currentJobData = null;
-  let existingMatch = null;
-  let existingMatchTier = null;
-  let isUpdating = false; // true if user chose "Update existing"
+  let referralOn = false;
+  let keywordsData = null;
 
-  /* ─── DOM References ─── */
+  /* ─── DOM Refs ─── */
   const $ = id => document.getElementById(id);
-  const mainView = $('main-view');
-  const settingsPanel = $('settings-panel');
 
-  // Form
   const inputRole = $('input-role');
   const inputCompany = $('input-company');
+  const inputLocation = $('input-location');
+  const inputSource = $('input-source');
+  const inputJobId = $('input-jobid');
   const inputUrl = $('input-url');
-  const platformBadge = $('platform-badge');
-  const scrapeIndicator = $('scrape-indicator');
   const inputNotes = $('input-notes');
   const inputReferralPerson = $('input-referral-person');
 
-  // Buttons
-  const btnLog = $('btn-log');
-  const btnLogText = $('btn-log-text');
-  const btnLogSpinner = $('btn-log-spinner');
-  const btnSettings = $('btn-settings');
-  const btnDashboard = $('btn-dashboard');
-  const btnBack = $('btn-back');
-  const btnSaveSettings = $('btn-save-settings');
-  const btnExportCSV = $('btn-export-csv');
-  const btnClearData = $('btn-clear-data');
-  const btnCopyReferral = $('btn-copy-referral');
+  const platformBadge = $('platform-badge');
+  const scrapeIndicator = $('scrape-indicator');
 
-  // Duplicate
+  const autofillBanner = $('autofill-failed');
+  const aggregatorHint = $('aggregator-hint');
+  const aggregatorText = $('aggregator-text');
+  const aggregatorLink = $('aggregator-link');
+
   const dupBanner = $('dup-banner');
   const dupTitle = $('dup-title');
   const dupDetail = $('dup-detail');
+  const dupEmoji = $('dup-emoji');
   const btnDupUpdate = $('btn-dup-update');
   const btnDupNew = $('btn-dup-new');
+
   const softWarning = $('soft-warning');
   const softWarningText = $('soft-warning-text');
   const btnSoftDismiss = $('btn-soft-dismiss');
 
-  // Quick update
   const quickUpdateBar = $('quick-update-bar');
   const quickStatusPills = $('quick-status-pills');
 
-  // Success
+  const btnLog = $('btn-log');
+  const btnLogText = $('btn-log-text');
+  const btnLogSpinner = $('btn-log-spinner');
   const successState = $('success-state');
   const successDetail = $('success-detail');
-  const successDashboard = $('success-dashboard');
+  const mainView = $('main-view');
 
-  // Referral
+  const settingsPanel = $('settings-panel');
+  const btnSettings = $('btn-settings');
+  const btnBack = $('btn-back');
+  const btnDashboard = $('btn-dashboard');
+
+  const jdToggle = $('jd-toggle');
+  const jdSummary = $('jd-summary');
+  const jdChevron = $('jd-chevron');
+  const jdPanel = $('jd-panel');
+  const jdSection = $('jd-section');
+  const jdMustPills = $('jd-must-pills');
+  const jdNicePills = $('jd-nice-pills');
+  const jdMatch = $('jd-match');
+  const jdLevel = $('jd-level');
+
   const toggleReferral = $('toggle-referral');
   const referralFields = $('referral-fields');
 
-  /* ═══════════════════════════════════════
-     Initialization
-     ═══════════════════════════════════════ */
+  /* ═══════════════════════════════
+     Init
+     ═══════════════════════════════ */
 
   async function init() {
-    // Load settings first
-    currentSettings = await getSettings();
-    applySettingsToUI(currentSettings);
-
-    // Set defaults
-    selectedEmail = currentSettings.defaultEmail || 'A';
-    selectedStatus = currentSettings.defaultStatus || 'Applied';
-    activatePill('email-pills', selectedEmail);
-    activatePill('status-pills', selectedStatus);
-
-    // Try to get job data from content script
-    await fetchJobData();
-
-    // Wire up events
+    settings = await getSettings();
+    applySettings();
     wireEvents();
+    await fetchJobData();
   }
 
-  function applySettingsToUI(s) {
-    $('pill-label-a').textContent = s.labelA || 'Primary';
-    $('pill-label-b').textContent = s.labelB || 'Referral';
-    $('pill-addr-a').textContent = s.emailA || 'Not set';
-    $('pill-addr-b').textContent = s.emailB || 'Not set';
+  function applySettings() {
+    selectedEmail = settings.defaultEmail || 'A';
+    selectedStatus = settings.defaultStatus || 'Applied';
 
-    // Settings panel
-    $('set-label-a').value = s.labelA || '';
-    $('set-email-a').value = s.emailA || '';
-    $('set-label-b').value = s.labelB || '';
-    $('set-email-b').value = s.emailB || '';
-    $('set-default-email').value = s.defaultEmail || 'A';
-    $('set-default-status').value = s.defaultStatus || 'Applied';
-    $('set-weekly-goal').value = s.weeklyGoal || 5;
+    $('pill-label-a').textContent = settings.labelA || 'Primary';
+    $('pill-label-b').textContent = settings.labelB || 'Referral';
+    $('pill-addr-a').textContent = settings.emailA || '';
+    $('pill-addr-b').textContent = settings.emailB || '';
+
+    updateEmailPills();
+    updateStatusPills();
+
+    // Settings form
+    $('set-label-a').value = settings.labelA || '';
+    $('set-email-a').value = settings.emailA || '';
+    $('set-label-b').value = settings.labelB || '';
+    $('set-email-b').value = settings.emailB || '';
+    $('set-default-email').value = settings.defaultEmail || 'A';
+    $('set-default-status').value = settings.defaultStatus || 'Applied';
+    $('set-weekly-goal').value = settings.weeklyGoal || 5;
   }
 
-  /* ─── Fetch Job Data from Content Script ─── */
+  /* ═══════════════════════════════
+     Fetch Job Data from Content Script
+     ═══════════════════════════════ */
+
   async function fetchJobData() {
+    // Always pre-fill URL
     try {
       const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
-      if (!tab || !tab.id) return setManualMode();
+      if (tab?.url) inputUrl.value = tab.url;
+    } catch { /* ignore */ }
 
-      // Try sending message with timeout
+    // Try content script with 400ms timeout
+    try {
+      const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) { showAutoFillFailed(); return; }
+
       const response = await Promise.race([
-        new Promise((resolve) => {
-          chrome.tabs.sendMessage(tab.id, { type: 'GET_JOB_DATA' }, (resp) => {
-            if (chrome.runtime.lastError) resolve(null);
-            else resolve(resp);
-          });
+        new Promise(resolve => {
+          chrome.tabs.sendMessage(tab.id, { type: 'GET_JOB_DATA' }, resolve);
         }),
-        new Promise(resolve => setTimeout(() => resolve(null), 300))
+        new Promise(resolve => setTimeout(() => resolve(null), 400))
       ]);
 
-      if (response && response.success && response.data) {
-        currentJobData = response.data;
-        populateForm(response.data);
-        await checkExistingEntry(response.data);
+      if (response?.success && response.data) {
+        scrapedData = response.data;
+        populateFromScrape(scrapedData);
       } else {
-        // Fallback: try to extract data from URL alone
-        const urlData = extractFromUrl(tab.url);
-        if (urlData) {
-          currentJobData = urlData;
-          populateForm(urlData);
-          await checkExistingEntry(urlData);
-        } else {
-          setManualMode();
-        }
+        showAutoFillFailed();
       }
     } catch {
-      setManualMode();
+      showAutoFillFailed();
     }
   }
 
-  function extractFromUrl(url) {
-    if (!url) return null;
-    try {
-      const u = new URL(url);
-      const host = u.hostname;
-      let platform = 'Other';
-      if (host.includes('linkedin.com')) platform = 'LinkedIn';
-      else if (host.includes('wellfound.com') || host.includes('angel.co')) platform = 'Wellfound';
-      else if (host.includes('indeed.com')) platform = 'Indeed';
-      else if (host.includes('naukri.com')) platform = 'Naukri';
-
-      // Try to extract job ID
-      let jobId = null;
-      const path = u.pathname;
-      if (platform === 'LinkedIn') {
-        const m = path.match(/\/jobs\/view\/(\d+)/);
-        jobId = m ? `li_${m[1]}` : null;
-      } else if (platform === 'Indeed') {
-        const jk = u.searchParams.get('jk');
-        jobId = jk ? `in_${jk}` : null;
-      } else if (platform === 'Wellfound') {
-        const m = path.match(/\/jobs\/(\d+)/) || path.match(/\/l\/(\d+)/);
-        jobId = m ? `wf_${m[1]}` : null;
-      } else if (platform === 'Naukri') {
-        const m = path.match(/-(\d+)\.html$/);
-        jobId = m ? `nk_${m[1]}` : null;
-      }
-
-      // Normalize URL
-      const trackingParams = [
-        'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content',
-        'refId', 'trackingId', 'from', 'src', 'lipi', 'trk', 'trkInfo',
-        'ref', 'referrer', 'source', 'campaign', 'medium', 'fbclid', 'gclid'
-      ];
-      trackingParams.forEach(p => u.searchParams.delete(p));
-      u.hash = '';
-      const canonicalUrl = u.origin + u.pathname.replace(/\/+$/, '') + (u.search || '');
-
-      if (platform !== 'Other' || jobId) {
-        return { company: '', role: '', jobId, platform, canonicalUrl, scrapeQuality: 'failed' };
-      }
-      return null;
-    } catch { return null; }
+  function showAutoFillFailed() {
+    autofillBanner.classList.remove('hidden');
+    scrapeIndicator.dataset.quality = 'failed';
   }
 
-  function populateForm(data) {
+  function populateFromScrape(data) {
     inputRole.value = data.role || '';
     inputCompany.value = data.company || '';
-    inputUrl.value = data.canonicalUrl || '';
+    inputLocation.value = data.location || '';
+    inputSource.value = data.source || 'Direct';
+    inputJobId.value = data.rawJobId || '';
+    if (data.canonicalUrl) inputUrl.value = data.canonicalUrl;
 
     platformBadge.textContent = data.platform || 'Other';
-    platformBadge.setAttribute('data-platform', data.platform || 'Other');
+    platformBadge.dataset.platform = data.platform || 'Other';
+    scrapeIndicator.dataset.quality = data.scrapeQuality || 'failed';
+    scrapeIndicator.title = `Scrape: ${data.scrapeQuality || 'failed'}`;
 
-    scrapeIndicator.setAttribute('data-quality', data.scrapeQuality || 'failed');
-    const qualityTitles = { full: 'All fields detected', partial: 'Partial detection', failed: 'Manual entry needed' };
-    scrapeIndicator.title = qualityTitles[data.scrapeQuality] || 'Unknown';
+    // Show aggregator hint
+    if (data.siteType === 'aggregator') {
+      aggregatorHint.classList.remove('hidden');
+      aggregatorText.textContent = `ℹ️ Job ID not available on ${data.platform}. Visit the company careers page for the real Job ID.`;
+    }
+
+    // Keyword data
+    if (data.keywords && (data.keywords.mustHave?.length > 0 || data.keywords.niceToHave?.length > 0)) {
+      keywordsData = data.keywords;
+      renderJDInsights();
+    } else {
+      jdSection.classList.add('hidden');
+    }
+
+    // Check for duplicates
+    checkForDuplicates();
   }
 
-  function setManualMode() {
-    platformBadge.textContent = 'Manual';
-    platformBadge.setAttribute('data-platform', 'Other');
-    scrapeIndicator.setAttribute('data-quality', 'failed');
-    scrapeIndicator.title = 'Manual entry mode';
+  /* ═══════════════════════════════
+     JD Insights
+     ═══════════════════════════════ */
+
+  function renderJDInsights() {
+    if (!keywordsData) { jdSection.classList.add('hidden'); return; }
+    jdSection.classList.remove('hidden');
+
+    const must = keywordsData.mustHave || [];
+    const nice = keywordsData.niceToHave || [];
+    const total = must.length + nice.length;
+
+    // Match score
+    const myMatches = must.filter(k => MY_SKILLS.some(s => s.toLowerCase() === k.toLowerCase()));
+    const matchCount = myMatches.length;
+    const matchTotal = must.length;
+    const matchPct = matchTotal > 0 ? Math.round((matchCount / matchTotal) * 100) : 0;
+
+    jdSummary.textContent = `${total} keywords  •  Match: ${matchCount}/${matchTotal}`;
+
+    // Must have pills
+    jdMustPills.innerHTML = must.map(s => {
+      const isMatch = MY_SKILLS.some(ms => ms.toLowerCase() === s.toLowerCase());
+      return `<span class="skill-pill ${isMatch ? 'skill-pill-match' : 'skill-pill-miss'}">${esc(s)}</span>`;
+    }).join('');
+
+    // Nice to have pills
+    jdNicePills.innerHTML = nice.map(s => `<span class="skill-pill skill-pill-nice">${esc(s)}</span>`).join('');
+    if (nice.length === 0) $('jd-nice-have').classList.add('hidden');
+
+    // Match bar
+    jdMatch.innerHTML = `${matchCount}/${matchTotal} required skills
+      <span class="jd-match-bar jd-match-bar-bg">
+        <span class="jd-match-bar-fill" style="width:${matchPct}%"></span>
+      </span> ${matchPct}%`;
+
+    // Level
+    const lvl = keywordsData.experienceLevel || '';
+    const yrs = keywordsData.yearsRequired?.join(', ') || '';
+    jdLevel.textContent = [lvl, yrs].filter(Boolean).join('  •  ');
   }
 
-  /* ─── Duplicate Check ─── */
-  async function checkExistingEntry(data) {
+  /* ═══════════════════════════════
+     Duplicate Detection
+     ═══════════════════════════════ */
+
+  async function checkForDuplicates() {
     try {
       const apps = await getAllApplications();
-      const result = await checkDuplicate(data, apps);
+      if (apps.length === 0) return;
 
-      if (result.tier === 1 || result.tier === 2) {
-        existingMatch = result.match;
-        existingMatchTier = result.tier;
-        showDupBanner(result.match, result.tier);
-        showQuickUpdateBar(result.match);
-      } else if (result.tier === 3) {
-        showSoftWarning(result.match);
+      const entry = {
+        jobId: scrapedData?.jobId || (inputJobId.value ? 'xx_' + inputJobId.value : null),
+        jobUrl: inputUrl.value,
+        company: inputCompany.value,
+        role: inputRole.value
+      };
+
+      // Inline check (reusing dedup logic)
+      const normUrl = _normUrl(entry.jobUrl);
+      let result = null;
+
+      // Tier 1: Job ID
+      if (entry.jobId) {
+        const m = apps.find(a => a.jobId && a.jobId === entry.jobId);
+        if (m) { result = { type: 'exact', match: m }; }
       }
-    } catch { /* silently ignore dedup errors */ }
+
+      // Tier 2: URL
+      if (!result && normUrl) {
+        const m = apps.find(a => _normUrl(a.jobUrl) === normUrl);
+        if (m) { result = { type: 'url', match: m }; }
+      }
+
+      // Tier 3/4: Company+Role
+      if (!result && entry.company && entry.role) {
+        const nc = _normCo(entry.company), nr = _normRole(entry.role);
+        if (nc && nr) {
+          const matches = apps.filter(a => _normCo(a.company) === nc && _normRole(a.role) === nr);
+          if (matches.length > 0) {
+            matches.sort((a, b) => new Date(b.dateApplied) - new Date(a.dateApplied));
+            const mr = matches[0];
+            const days = Math.floor((Date.now() - new Date(mr.dateApplied).getTime()) / 86400000);
+            if (days > 60 || mr.status === 'Rejected' || mr.status === 'Withdrawn') {
+              result = { type: 'repost', match: mr, days };
+            } else {
+              result = { type: 'fuzzy', match: mr, days };
+            }
+          }
+        }
+      }
+
+      if (!result) return;
+      dupResult = result;
+      showDupWarning(result);
+
+      // Also show quick-update for Tier 1/2
+      if (result.type === 'exact' || result.type === 'url') {
+        showQuickUpdate(result.match);
+      }
+    } catch { /* silently skip */ }
   }
 
-  function showDupBanner(match, tier) {
-    dupBanner.classList.remove('hidden');
-    const tierLabel = tier === 1 ? 'Exact job match' : 'URL match';
-    dupTitle.textContent = `${tierLabel} — Already Logged`;
-    const emailLabel = match.email === 'A' ? (currentSettings.labelA || 'A') : (currentSettings.labelB || 'B');
-    dupDetail.textContent = `Logged on ${formatDate(match.dateApplied)} via ${emailLabel} — Status: ${match.status}`;
-    btnLogText.textContent = 'Log Application';
+  function showDupWarning(result) {
+    const m = result.match;
+
+    if (result.type === 'exact' || result.type === 'url') {
+      const emailLbl = m.email === 'A' ? (settings.labelA || 'A') : (settings.labelB || 'B');
+      dupBanner.classList.remove('hidden');
+      dupBanner.dataset.type = result.type;
+      dupEmoji.textContent = '🚫';
+      dupTitle.textContent = result.type === 'exact' ? 'Exact Duplicate' : 'URL Match';
+      dupDetail.textContent = `Applied on ${_fmtDate(m.dateApplied)} via ${emailLbl}. Status: ${m.status}.`;
+      btnDupUpdate.classList.remove('hidden');
+      btnDupNew.textContent = 'Log anyway (re-apply)';
+      btnLog.disabled = true;
+      btnLog.style.opacity = '0.5';
+    } else if (result.type === 'repost') {
+      const oldId = m.rawJobId || m.jobId || 'N/A';
+      dupBanner.classList.remove('hidden');
+      dupBanner.dataset.type = 'repost';
+      dupEmoji.textContent = '🔄';
+      dupTitle.textContent = 'Re-posted Job Detected';
+      dupDetail.textContent = `${m.company} reposted ${m.role}. Applied ${result.days || '?'} days ago (ID: ${oldId}, Status: ${m.status}).`;
+      btnDupUpdate.classList.add('hidden');
+      btnDupNew.textContent = 'Log as new application';
+    } else if (result.type === 'fuzzy') {
+      const emailLbl = m.email === 'A' ? (settings.labelA || 'A') : (settings.labelB || 'B');
+      softWarning.classList.remove('hidden');
+      softWarningText.textContent = `Similar role at ${m.company} applied ${result.days || '?'} days ago as ${emailLbl}. Continue?`;
+    }
   }
 
-  function showQuickUpdateBar(match) {
+  function showQuickUpdate(app) {
     quickUpdateBar.classList.remove('hidden');
     const statuses = ['Applied', 'Interviewing', 'Rejected', 'Offer', 'Withdrawn'];
     quickStatusPills.innerHTML = statuses.map(s =>
-      `<button class="pill pill-status ${s === match.status ? 'active' : ''}" data-value="${s}" data-quick="true">${s}</button>`
+      `<button class="pill pill-status ${s === app.status ? 'active' : ''}" data-status="${s}" data-app-id="${app.id}">${s}</button>`
     ).join('');
+  }
 
-    quickStatusPills.querySelectorAll('.pill').forEach(p => {
-      p.addEventListener('click', async () => {
-        const newStatus = p.getAttribute('data-value');
-        try {
-          await chrome.runtime.sendMessage({
-            type: 'UPDATE_APPLICATION',
-            id: match.id,
-            patch: { status: newStatus }
-          });
-          showSuccess(`${match.company} — Updated to ${newStatus}`);
-        } catch (e) {
-          console.error('Quick update failed:', e);
-        }
+  /* ═══════════════════════════════
+     Referral Message Generator
+     ═══════════════════════════════ */
+
+  function generateReferralMessage() {
+    const name = inputReferralPerson.value.trim() || '[Name]';
+    const role = inputRole.value.trim() || '[Role]';
+    const company = inputCompany.value.trim() || '[Company]';
+    const rawJobId = inputJobId.value.trim();
+    const jobUrl = inputUrl.value.trim();
+
+    // JOB_ID_LINE
+    let jobIdLine;
+    if (rawJobId) {
+      jobIdLine = `Job ID: ${rawJobId}`;
+    } else if (jobUrl) {
+      jobIdLine = `Role link: ${jobUrl}`;
+    } else {
+      jobIdLine = '';
+    }
+
+    // SKILLS_LINE
+    let skillsLine = '';
+    if (keywordsData && keywordsData.mustHave) {
+      const matched = keywordsData.mustHave.filter(k => MY_SKILLS.some(s => s.toLowerCase() === k.toLowerCase()));
+      if (matched.length >= 2) {
+        const top = matched.slice(0, 4).join(', ');
+        skillsLine = `I have hands-on experience with ${top}, which aligns well with this role.`;
+      }
+    }
+    if (!skillsLine) {
+      // Fallback: role-based keyword mapping
+      const r = role.toLowerCase();
+      if (/frontend|react|angular|vue|ui/i.test(r)) skillsLine = 'I have hands-on experience with React.js, frontend development, and responsive UI design.';
+      else if (/backend|node|django|api/i.test(r)) skillsLine = 'I have hands-on experience with backend development, REST APIs, and Node.js.';
+      else if (/fullstack|full.?stack/i.test(r)) skillsLine = 'I have hands-on experience with full stack development with React and Node.js.';
+      else if (/data|ml|ai|machine.?learning/i.test(r)) skillsLine = 'I have a strong foundation in data structures, algorithms, and ML fundamentals.';
+      else if (/devops|cloud|aws|gcp/i.test(r)) skillsLine = 'I have hands-on experience with cloud platforms, CI/CD, and infrastructure tooling.';
+      else if (/mobile|android|ios|flutter/i.test(r)) skillsLine = 'I have hands-on experience with mobile development and cross-platform frameworks.';
+      else if (/sde|software.?engineer/i.test(r)) skillsLine = 'I have a strong foundation in data structures, algorithms, and software engineering.';
+    }
+
+    const msg =
+      `Hi ${name},\n\n` +
+      `I came across the ${role} at ${company} and wanted to ask if you could refer me for this position.` +
+      (jobIdLine ? ` ${jobIdLine}` : '') +
+      `\n\n` +
+      `I am a final year B.Tech CSE student (2026) at VIT with a 9.32 CGPA, with a strong foundation in computer science fundamentals.` +
+      (skillsLine ? `\n${skillsLine}` : '') +
+      `\n\n` +
+      `Please find my resume here:\nhttps://drive.google.com/file/d/12lNkX8Z8fN1ecycdakI-KM1NjENnNO2z/view?usp=drive_link\n\n` +
+      `Kindly let me know if you need any additional details.\n\n` +
+      `Thanks & Regards,\nPranjal Khare`;
+
+    return msg;
+  }
+
+  /* ═══════════════════════════════
+     Save / Update
+     ═══════════════════════════════ */
+
+  async function handleSave() {
+    btnLog.disabled = true;
+    btnLogText.classList.add('hidden');
+    btnLogSpinner.classList.remove('hidden');
+
+    const data = {
+      jobId: scrapedData?.jobId || (inputJobId.value.trim() ? 'xx_' + inputJobId.value.trim() : null),
+      rawJobId: inputJobId.value.trim() || scrapedData?.rawJobId || '',
+      platform: scrapedData?.platform || 'Other',
+      siteType: scrapedData?.siteType || 'employer',
+      company: inputCompany.value.trim(),
+      role: inputRole.value.trim(),
+      location: inputLocation.value.trim(),
+      source: inputSource.value.trim() || 'Direct',
+      jobUrl: inputUrl.value.trim(),
+      email: selectedEmail,
+      status: selectedStatus,
+      referral: referralOn,
+      referralPerson: referralOn ? inputReferralPerson.value.trim() : '',
+      notes: inputNotes.value.trim(),
+      loggedFrom: 'popup',
+      keywords: keywordsData || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] }
+    };
+
+    try {
+      const result = await new Promise(resolve => {
+        chrome.runtime.sendMessage({ type: 'SAVE_APPLICATION', data }, resolve);
       });
+
+      if (result?.saved) {
+        showSuccess(data.company, data.role);
+      } else if (result?.duplicate) {
+        btnLog.disabled = false;
+        btnLogText.classList.remove('hidden');
+        btnLogSpinner.classList.add('hidden');
+        dupResult = { type: result.type, match: result.existing };
+        showDupWarning(dupResult);
+      } else {
+        throw new Error(result?.error || 'Unknown error');
+      }
+    } catch (e) {
+      console.error('Save failed:', e);
+      btnLog.disabled = false;
+      btnLogText.classList.remove('hidden');
+      btnLogSpinner.classList.add('hidden');
+      btnLogText.textContent = 'Error — try again';
+      setTimeout(() => { btnLogText.textContent = 'Log Application'; }, 2000);
+    }
+  }
+
+  async function handleForceSave(linkedJobId) {
+    const data = {
+      jobId: scrapedData?.jobId || (inputJobId.value.trim() ? 'xx_' + inputJobId.value.trim() : null),
+      rawJobId: inputJobId.value.trim() || scrapedData?.rawJobId || '',
+      platform: scrapedData?.platform || 'Other',
+      siteType: scrapedData?.siteType || 'employer',
+      company: inputCompany.value.trim(),
+      role: inputRole.value.trim(),
+      location: inputLocation.value.trim(),
+      source: inputSource.value.trim() || 'Direct',
+      jobUrl: inputUrl.value.trim(),
+      email: selectedEmail,
+      status: selectedStatus,
+      referral: referralOn,
+      referralPerson: referralOn ? inputReferralPerson.value.trim() : '',
+      notes: inputNotes.value.trim(),
+      loggedFrom: 'popup',
+      linkedJobId: linkedJobId || '',
+      keywords: keywordsData || { mustHave: [], niceToHave: [], byCategory: {}, experienceLevel: '', yearsRequired: [] }
+    };
+
+    try {
+      const result = await new Promise(resolve => {
+        chrome.runtime.sendMessage({ type: 'FORCE_SAVE_APPLICATION', data }, resolve);
+      });
+      if (result?.saved) showSuccess(data.company, data.role);
+    } catch (e) {
+      console.error('Force save failed:', e);
+    }
+  }
+
+  function showSuccess(company, role) {
+    mainView.querySelectorAll('.form-section, .btn-log, .dup-banner, .soft-warning, .quick-update-bar, .info-banner').forEach(el => el.classList.add('hidden'));
+    successDetail.textContent = `${company} — ${role}`;
+    successState.classList.remove('hidden');
+    $('success-dashboard').addEventListener('click', (e) => {
+      e.preventDefault();
+      chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
     });
+    setTimeout(() => window.close(), 1500);
   }
 
-  function showSoftWarning(match) {
-    softWarning.classList.remove('hidden');
-    const emailLabel = match.email === 'A' ? (currentSettings.labelA || 'A') : (currentSettings.labelB || 'B');
-    softWarningText.textContent = `You may have applied to a similar role at ${match.company} on ${formatDate(match.dateApplied)}. Applied as ${emailLabel}. Continue anyway?`;
-  }
+  /* ═══════════════════════════════
+     Event Wiring
+     ═══════════════════════════════ */
 
-  /* ─── Wire Events ─── */
   function wireEvents() {
     // Email pills
     document.querySelectorAll('.pill-email').forEach(pill => {
       pill.addEventListener('click', () => {
-        selectedEmail = pill.getAttribute('data-value');
-        activatePill('email-pills', selectedEmail);
+        selectedEmail = pill.dataset.value;
+        updateEmailPills();
       });
     });
 
     // Status pills
-    document.querySelectorAll('#status-pills .pill-status').forEach(pill => {
+    document.querySelectorAll('.pill-status').forEach(pill => {
       pill.addEventListener('click', () => {
-        selectedStatus = pill.getAttribute('data-value');
-        activatePill('status-pills', selectedStatus);
-
-        // Auto-expand referral if Re-applied
-        if (selectedStatus === 'Re-applied (Referral)' && !referralEnabled) {
-          toggleReferralSection(true);
-        }
+        selectedStatus = pill.dataset.value;
+        updateStatusPills();
       });
     });
 
     // Referral toggle
     toggleReferral.addEventListener('click', () => {
-      toggleReferralSection(!referralEnabled);
+      referralOn = !referralOn;
+      toggleReferral.setAttribute('aria-checked', referralOn);
+      referralFields.classList.toggle('hidden', !referralOn);
+      if (referralOn) {
+        selectedStatus = 'Referral Pending';
+        updateStatusPills();
+      }
     });
 
-    // Copy referral message
-    btnCopyReferral.addEventListener('click', () => {
-      const person = inputReferralPerson.value.trim();
-      const company = inputCompany.value.trim();
-      const role = inputRole.value.trim();
-      const name = person.split('/').pop().split('?')[0] || person; // handle LinkedIn URLs
-      const msg = `Hi ${name || 'there'}, I noticed you work at ${company || '[Company]'}. I'm applying for the ${role || '[Role]'} position and would love a referral if you're comfortable. Would really appreciate your help!`;
-      navigator.clipboard.writeText(msg).then(() => {
-        btnCopyReferral.textContent = '✓ Copied!';
-        setTimeout(() => { btnCopyReferral.textContent = '📋 Copy referral message'; }, 1500);
-      });
+    // Copy referral
+    $('btn-copy-referral').addEventListener('click', async () => {
+      const msg = generateReferralMessage();
+      try {
+        await navigator.clipboard.writeText(msg);
+        $('btn-copy-referral').textContent = '✓ Copied!';
+        setTimeout(() => { $('btn-copy-referral').textContent = '📋 Copy referral message'; }, 1500);
+      } catch { /* fallback */ }
+    });
+
+    // JD toggle
+    jdToggle.addEventListener('click', () => {
+      const isOpen = !jdPanel.classList.contains('hidden');
+      jdPanel.classList.toggle('hidden', isOpen);
+      jdChevron.classList.toggle('open', !isOpen);
+    });
+
+    // Copy keywords
+    $('btn-copy-keywords').addEventListener('click', async () => {
+      if (!keywordsData) return;
+      const all = [...(keywordsData.mustHave || []), ...(keywordsData.niceToHave || [])];
+      const text = 'Key skills: ' + all.join(', ');
+      try {
+        await navigator.clipboard.writeText(text);
+        $('btn-copy-keywords').textContent = '✓ Copied!';
+        setTimeout(() => { $('btn-copy-keywords').textContent = '📋 Copy for resume'; }, 1500);
+      } catch { /* fallback */ }
     });
 
     // Log button
-    btnLog.addEventListener('click', handleLog);
+    btnLog.addEventListener('click', handleSave);
 
-    // Duplicate actions
-    btnDupUpdate.addEventListener('click', () => {
-      isUpdating = true;
+    // Dup actions
+    btnDupNew.addEventListener('click', () => {
       dupBanner.classList.add('hidden');
-      btnLogText.textContent = 'Update Application';
-    });
-
-    btnDupNew.addEventListener('click', async () => {
-      isUpdating = false;
-      dupBanner.classList.add('hidden');
-      existingMatch = null;
-      existingMatchTier = null;
-
-      // Pre-fill for re-apply flow
-      selectedStatus = 'Re-applied (Referral)';
-      activatePill('status-pills', selectedStatus);
-
-      // Switch email to referral email
-      if (selectedEmail === 'A') {
-        selectedEmail = 'B';
-        activatePill('email-pills', 'B');
+      btnLog.disabled = false;
+      btnLog.style.opacity = '1';
+      if (dupResult?.type === 'repost') {
+        handleForceSave(dupResult.match.id);
+      } else {
+        handleForceSave(dupResult?.match?.id || '');
       }
-
-      // Expand referral section
-      toggleReferralSection(true);
-      btnLogText.textContent = 'Log Application';
     });
 
-    // Soft warning dismiss
-    btnSoftDismiss.addEventListener('click', () => {
-      softWarning.classList.add('hidden');
+    btnDupUpdate.addEventListener('click', () => {
+      if (dupResult?.match) showQuickUpdate(dupResult.match);
+      dupBanner.classList.add('hidden');
+      btnLog.disabled = false;
+      btnLog.style.opacity = '1';
+    });
+
+    btnSoftDismiss.addEventListener('click', () => softWarning.classList.add('hidden'));
+
+    // Quick status update
+    quickStatusPills.addEventListener('click', async (e) => {
+      const pill = e.target.closest('.pill-status');
+      if (!pill) return;
+      const appId = pill.dataset.appId;
+      const status = pill.dataset.status;
+      try {
+        await new Promise(resolve => {
+          chrome.runtime.sendMessage({ type: 'UPDATE_APPLICATION', id: appId, patch: { status } }, resolve);
+        });
+        pill.parentElement.querySelectorAll('.pill').forEach(p => p.classList.remove('active'));
+        pill.classList.add('active');
+      } catch { /* ignore */ }
     });
 
     // Settings
-    btnSettings.addEventListener('click', () => {
-      settingsPanel.classList.remove('hidden');
-      mainView.style.display = 'none';
-    });
+    btnSettings.addEventListener('click', () => settingsPanel.classList.remove('hidden'));
+    btnBack.addEventListener('click', () => settingsPanel.classList.add('hidden'));
+    btnDashboard.addEventListener('click', () => chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') }));
 
-    btnBack.addEventListener('click', () => {
+    $('btn-save-settings').addEventListener('click', async () => {
+      settings = await saveSettings({
+        labelA: $('set-label-a').value.trim(), emailA: $('set-email-a').value.trim(),
+        labelB: $('set-label-b').value.trim(), emailB: $('set-email-b').value.trim(),
+        defaultEmail: $('set-default-email').value, defaultStatus: $('set-default-status').value,
+        weeklyGoal: parseInt($('set-weekly-goal').value) || 5
+      });
+      applySettings();
       settingsPanel.classList.add('hidden');
-      mainView.style.display = '';
     });
 
-    btnSaveSettings.addEventListener('click', handleSaveSettings);
-
-    // Dashboard
-    btnDashboard.addEventListener('click', () => {
-      chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
-    });
-
-    successDashboard.addEventListener('click', (e) => {
-      e.preventDefault();
-      chrome.tabs.create({ url: chrome.runtime.getURL('dashboard.html') });
-    });
-
-    // CSV Export
-    btnExportCSV.addEventListener('click', handleExportCSV);
-
-    // Clear Data
-    btnClearData.addEventListener('click', handleClearData);
-  }
-
-  /* ─── Pill Activation Helper ─── */
-  function activatePill(groupId, value) {
-    const group = $(groupId);
-    group.querySelectorAll('.pill').forEach(p => {
-      p.classList.toggle('active', p.getAttribute('data-value') === value);
-    });
-  }
-
-  /* ─── Toggle Referral ─── */
-  function toggleReferralSection(state) {
-    referralEnabled = state;
-    toggleReferral.setAttribute('aria-checked', String(state));
-    referralFields.classList.toggle('hidden', !state);
-  }
-
-  /* ─── Handle Log / Save ─── */
-  async function handleLog() {
-    const role = inputRole.value.trim();
-    const company = inputCompany.value.trim();
-    const url = inputUrl.value.trim();
-
-    // Validate
-    if (!role && !company) {
-      shakeButton(btnLog);
-      inputRole.focus();
-      return;
-    }
-
-    setLoading(true);
-
-    const data = {
-      jobId: currentJobData?.jobId || null,
-      platform: currentJobData?.platform || 'Other',
-      company,
-      role,
-      jobUrl: url,
-      email: selectedEmail,
-      emailA: currentSettings.emailA,
-      emailB: currentSettings.emailB,
-      status: selectedStatus,
-      referral: referralEnabled,
-      referralPerson: inputReferralPerson.value.trim(),
-      notes: inputNotes.value.trim(),
-      source: 'popup'
-    };
-
-    try {
-      if (isUpdating && existingMatch) {
-        // Update existing entry
-        const result = await chrome.runtime.sendMessage({
-          type: 'UPDATE_APPLICATION',
-          id: existingMatch.id,
-          patch: {
-            status: selectedStatus,
-            email: selectedEmail,
-            referral: referralEnabled,
-            referralPerson: data.referralPerson,
-            notes: data.notes
-          }
-        });
-
-        if (result.error) throw new Error(result.error);
-        showSuccess(`${company} — ${role} (Updated)`);
-
-      } else if (existingMatchTier === 1 || existingMatchTier === 2) {
-        // Force save (user already clicked "Log as new")
-        // This path shouldn't normally be reached because btnDupNew clears existingMatch
-        const result = await chrome.runtime.sendMessage({
-          type: 'FORCE_SAVE_APPLICATION',
-          data
-        });
-        if (result.error) throw new Error(result.error);
-        showSuccess(`${company} — ${role}`);
-
-      } else {
-        // Normal save
-        const result = await chrome.runtime.sendMessage({
-          type: 'SAVE_APPLICATION',
-          data
-        });
-
-        if (result.error) throw new Error(result.error);
-
-        if (result.duplicate) {
-          setLoading(false);
-          existingMatch = result.existing;
-          existingMatchTier = result.tier;
-          showDupBanner(result.existing, result.tier);
-          return;
-        }
-
-        showSuccess(`${company} — ${role}`);
-      }
-    } catch (e) {
-      setLoading(false);
-      console.error('Save failed:', e);
-      btnLogText.textContent = 'Error — Try again';
-      setTimeout(() => { btnLogText.textContent = isUpdating ? 'Update Application' : 'Log Application'; }, 2000);
-    }
-  }
-
-  function setLoading(loading) {
-    btnLog.disabled = loading;
-    btnLogText.classList.toggle('hidden', loading);
-    btnLogSpinner.classList.toggle('hidden', !loading);
-  }
-
-  function showSuccess(detail) {
-    setLoading(false);
-    mainView.querySelectorAll('.form-section, .header, .quick-update-bar, .dup-banner, .soft-warning, #btn-log').forEach(
-      el => el.classList.add('hidden')
-    );
-    successState.classList.remove('hidden');
-    successDetail.textContent = detail;
-
-    // Auto-close after 1.5s
-    setTimeout(() => { window.close(); }, 1500);
-  }
-
-  function shakeButton(btn) {
-    btn.style.animation = 'none';
-    btn.offsetHeight; // trigger reflow
-    btn.style.animation = 'shake 300ms ease';
-    setTimeout(() => { btn.style.animation = ''; }, 300);
-  }
-
-  /* ─── Settings Handlers ─── */
-  async function handleSaveSettings() {
-    const patch = {
-      labelA: $('set-label-a').value.trim() || 'Primary',
-      emailA: $('set-email-a').value.trim(),
-      labelB: $('set-label-b').value.trim() || 'Referral',
-      emailB: $('set-email-b').value.trim(),
-      defaultEmail: $('set-default-email').value,
-      defaultStatus: $('set-default-status').value,
-      weeklyGoal: parseInt($('set-weekly-goal').value) || 5
-    };
-
-    try {
-      currentSettings = await saveSettings(patch);
-      applySettingsToUI(currentSettings);
-      btnSaveSettings.textContent = '✓ Saved!';
-      setTimeout(() => {
-        btnSaveSettings.textContent = 'Save Settings';
-        settingsPanel.classList.add('hidden');
-        mainView.style.display = '';
-      }, 800);
-    } catch (e) {
-      console.error('Settings save failed:', e);
-      btnSaveSettings.textContent = 'Error — Try again';
-      setTimeout(() => { btnSaveSettings.textContent = 'Save Settings'; }, 2000);
-    }
-  }
-
-  async function handleExportCSV() {
-    try {
+    $('btn-export-csv').addEventListener('click', async () => {
       const apps = await getAllApplications();
-      const settings = await getSettings();
       const csv = exportAsCSV(apps, settings);
-      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-      const url = URL.createObjectURL(blob);
-      const date = new Date().toISOString().split('T')[0];
+      downloadCSV(csv);
+    });
 
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `jobtrackr_export_${date}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
+    $('btn-clear-data').addEventListener('click', async () => {
+      if (confirm('Delete ALL application data? This cannot be undone.')) {
+        await clearAllData();
+        $('btn-clear-data').textContent = '✓ Cleared';
+        setTimeout(() => { $('btn-clear-data').textContent = '🗑️ Clear all data'; }, 1500);
+      }
+    });
 
-      btnExportCSV.textContent = '✓ Exported!';
-      setTimeout(() => { btnExportCSV.textContent = '📥 Export all as CSV'; }, 1500);
-    } catch (e) {
-      console.error('Export failed:', e);
-    }
+    // Notes expand
+    inputNotes.addEventListener('focus', () => { inputNotes.rows = 3; });
+    inputNotes.addEventListener('blur', () => { if (!inputNotes.value) inputNotes.rows = 1; });
   }
 
-  async function handleClearData() {
-    if (!confirm('Are you sure you want to delete ALL application data? This cannot be undone.')) return;
-    if (!confirm('Really? This will permanently delete ALL entries.')) return;
-
-    try {
-      await clearAllData();
-      btnClearData.textContent = '✓ Cleared!';
-      setTimeout(() => { btnClearData.textContent = '🗑️ Clear all data'; }, 1500);
-    } catch (e) {
-      console.error('Clear failed:', e);
-    }
+  function updateEmailPills() {
+    document.querySelectorAll('.pill-email').forEach(p => p.classList.toggle('active', p.dataset.value === selectedEmail));
   }
 
-  /* ─── Format Helpers ─── */
-  // formatDate is defined in storage.js
+  function updateStatusPills() {
+    document.querySelectorAll('#status-pills .pill-status').forEach(p => p.classList.toggle('active', p.dataset.value === selectedStatus));
+  }
+
+  /* ─── Helpers ─── */
+  function esc(s) { const d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  const _STRIP = ['utm_source','utm_medium','utm_campaign','utm_term','utm_content','utm_id','refId','trk','trkInfo','lipi','trackingId','fbclid','gclid','msclkid','mc_cid','_hsenc','_hsmi'];
+  const _CO_STRIP = ['inc','ltd','llc','pvt','limited','technologies','tech','software','solutions','systems','group','corp','co'];
+  const _ROLE_STRIP = ['senior','sr','junior','jr','lead','staff','principal','associate','assoc','eng','engineer','developer','dev','software','swe','sde'];
+
+  function _normUrl(url) { try { const u = new URL(url); _STRIP.forEach(p => u.searchParams.delete(p)); u.hash = ''; return u.origin + u.pathname.replace(/\/+$/,''); } catch { return url; } }
+  function _normCo(n) { if (!n) return ''; let s = n.toLowerCase(); _CO_STRIP.forEach(w => { s = s.replace(new RegExp(`\\b${w}\\b`,'g'),''); }); return s.replace(/[^\w\s]/g,'').replace(/\s+/g,' ').trim(); }
+  function _normRole(t) { if (!t) return ''; let s = t.toLowerCase(); _ROLE_STRIP.forEach(w => { s = s.replace(new RegExp(`\\b${w}\\b`,'g'),''); }); return s.replace(/[^\w\s]/g,'').replace(/\s+/g,' ').trim(); }
+  function _fmtDate(d) { try { return new Date(d).toLocaleDateString('en-US',{year:'numeric',month:'short',day:'numeric'}); } catch { return d; } }
+
+  function downloadCSV(csv) {
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = `jobtrackr_export_${new Date().toISOString().split('T')[0]}.csv`;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
 
   /* ─── Init ─── */
   init();

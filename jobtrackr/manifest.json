@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "JobTrackr",
-  "version": "1.0.0",
-  "description": "Track job applications across LinkedIn, Wellfound, Indeed, Naukri & more. One-click logging, dedup detection, and a full dashboard — all stored locally.",
+  "version": "2.0.0",
+  "description": "Track job applications across any ATS — Workday, Greenhouse, Lever, LinkedIn, Indeed, and more. One-click logging with auto-fill, dedup detection, JD keyword extraction, and smart referral messages.",
   "permissions": [
     "storage",
     "activeTab",
@@ -16,6 +16,20 @@
     "https://angel.co/*",
     "https://www.indeed.com/*",
     "https://www.naukri.com/*",
+    "https://boards.greenhouse.io/*",
+    "https://*.greenhouse.io/*",
+    "https://jobs.lever.co/*",
+    "https://jobs.smartrecruiters.com/*",
+    "https://*.myworkdayjobs.com/*",
+    "https://*.myworkday.com/*",
+    "https://*.ashbyhq.com/*",
+    "https://*.rippling.com/*",
+    "https://*.icims.com/*",
+    "https://*.bamboohr.com/*",
+    "https://*.jobvite.com/*",
+    "https://*.breezy.hr/*",
+    "https://*.workable.com/*",
+    "https://*.taleo.net/*",
     "https://*/*"
   ],
   "background": {
@@ -37,13 +51,7 @@
   },
   "content_scripts": [
     {
-      "matches": [
-        "https://www.linkedin.com/jobs/*",
-        "https://wellfound.com/*",
-        "https://angel.co/*",
-        "https://www.indeed.com/*",
-        "https://www.naukri.com/*"
-      ],
+      "matches": ["<all_urls>"],
       "js": ["scraper.js", "content.js"],
       "run_at": "document_idle"
     }
